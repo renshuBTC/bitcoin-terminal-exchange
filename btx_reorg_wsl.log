@@ -1,0 +1,17 @@
+[0] build the btx_reorg example
+   Compiling brk_indexer v0.3.0-beta.9 (/mnt/c/Users/Ren Shu/Documents/Claude/Projects/brk/crates/brk_indexer)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1m 00s
+[1] start regtest node (cookie auth, datacarriersize=240)
+[2] fund maker offer(1.0), confirm it
+[3] publish BTX order artifact on-chain, mine it (the announce block)
+  announce tx=937279b9b46e1f8b08b5b1c69e6881cf853974e73b2709bc61dc5b0caaafa739 in block 103 (335ff45e7f5ff360460d58f704138cbaf5411840bec7f2828d795afeb2174036)
+[4] RUN 1: index the chain -> btx_orders BEFORE reorg
+INDEXED_HEIGHT 104
+CXO_ORDER offer=9d6af24fe6c22b7dac85b0fb968e65fd7cba4d9e08e61888fcb37a1875d1896c:1 status=OPEN announce_height=103 last_event_height=103
+CXO_ORDER_COUNT 1
+[5] REORG: invalidate the announce block, mine 2 EMPTY blocks (announce orphaned, not re-mined)
+  new tip height 104
+[6] RUN 2: re-index SAME store -> triggers rollback_btx_orders (watch for the log line)
+INDEXED_HEIGHT 105
+CXO_ORDER_COUNT 0
+DONE_CXO_REORG

@@ -1,0 +1,15 @@
+[1] cleanup + start node
+  node up after 2 tries
+[2] fund maker offer (1.0) + taker payment (0.6)
+  offer txid=669dd129433e3254f3b9f8250a9ad6bfbb0e0170f523680befeb9b2e20c24be6  pay txid=c3e820123af92cb869a0c47a83e7752a72990acde601d7943c221e607fc935d1
+[3] locate funded vouts
+  offer outpoint 669dd129433e3254f3b9f8250a9ad6bfbb0e0170f523680befeb9b2e20c24be6:0 (1.0)  pay outpoint c3e820123af92cb869a0c47a83e7752a72990acde601d7943c221e607fc935d1:1 (0.6)
+[4] build swap (maker pre-signs SINGLE|ANYONECANPAY; taker completes)
+[5] NEGATIVE test (taker shaves maker payout 0.5 -> 0.4): expect allowed=false
+   allowed= False | reason= mandatory-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)
+[6] POSITIVE test (honest completion): expect allowed=true
+   allowed= True | reason= None
+[7] SETTLEMENT: single swap txid = 380f03e3a418e23029d35a1991f842bc0aa4b48706de13fc7cca71640350a9dc
+   maker payout (output0): 0.5 BTC, confirmations 1
+   offer UTXO after swap:  spent (consumed by swap)
+DONE_OK

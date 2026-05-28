@@ -1,0 +1,16 @@
+# BTX Python runtime dependencies (pinned — supply-chain audit, 2026-05-27).
+#
+# The BTX tooling has exactly ONE third-party runtime dependency; everything else is the Python
+# standard library. Pinned to the version the tooling was developed and tested against.
+#
+# python-bitcoinlib 0.12.2: tx/script serialization + P2WPKH ECDSA sign/verify (used by btx_0b.py,
+# btx_wallet.py, btx_envelope_publish.py, btx_etch.py). NOTE: 0.12.2 predates Taproot and its
+# ECDSA backend is OpenSSL via ctypes (NOT libsecp256k1) — which is why BIP340/BIP341 are hand-rolled
+# in btx_taproot.py. Maintainer: Peter Todd (effectively single-maintainer — low bus factor; on the
+# crypto path). The production maker-sig verification runs in the Rust indexer over libsecp256k1
+# (secp256k1 0.29.1); this Python path is the reference/CLI signer-verifier.
+python-bitcoinlib==0.12.2
+
+# Build-time only (not imported at runtime) — used by package-linux.sh to freeze the CLI tools:
+#   pyinstaller==6.20.0
+# Install separately for a release build:  pip install pyinstaller==6.20.0 --break-system-packages

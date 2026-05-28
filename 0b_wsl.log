@@ -1,0 +1,15 @@
+[1] start node (datacarriersize=240 so the ~200B BTX artifact rides one OP_RETURN)
+  up after 2
+[2] fund maker offer(1.0) + taker pay(0.6)
+  offer 2936e118632a07ac9d190b116f83d1037cc71a0575acf546526449056c145cc0:1 (1.0)  pay 82add439fffd1cc81271efb4dc92fef82c84da54e257f7c89a66af8a5dc869d9:1 (0.6)
+[3] MAKER: build BTX artifact (carries SINGLE|ANYONECANPAY pre-sig) and publish it on-chain
+  announce txid=b42c0ae7374204a38d089794f235dd74ea6ed25dcb03bacbd5c7010848976870 (offer UTXO still unspent)
+[4] SECOND PARTY: reconstruct order FROM CHAIN ONLY (read announce tx, verify maker sig)
+   parsed order: rune 840000:1 price 50000000 offer_vout 1
+   maker sig verified from chain data only: True
+[5] TAKER: complete the swap built ONLY from the on-chain artifact
+   testmempoolaccept: allowed= True reason= None
+[6] SETTLEMENT: swap txid=eb9e21f4ec6ee0904c5d4ddd7ba071b005d2cb4dca813cb79ac3c4c56cd1d262
+   maker payout (output0): 0.5 BTC, conf 1
+   offer UTXO after swap : spent (consumed)
+DONE_0B

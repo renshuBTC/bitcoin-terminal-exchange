@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — node · wallet · mining · DEX</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#f7931a; --ok:#3fb950; --bad:#f85149; --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5}
+  .wrap{max-width:1160px;margin:0 auto;padding:18px 20px 60px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:12px}
+  h1{font-size:22px;margin:0;font-weight:600}
+  h1 .tag{color:var(--accent)}
+  .pill{display:flex;gap:14px;align-items:center;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+  .pill b{color:var(--text);font-variant-numeric:tabular-nums}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--bad)}
+  .dot.up{background:var(--ok)}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:16px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .card h2{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;font-weight:600}
+  .kv{display:flex;justify-content:space-between;margin:4px 0;font-size:13px}
+  .kv span:last-child{font-variant-numeric:tabular-nums}
+  label{display:block;color:var(--muted);font-size:12px;margin:8px 0 3px}
+  input,select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 9px;font-size:13px;font-family:var(--mono)}
+  button{background:var(--accent);color:#0d1117;border:0;border-radius:7px;padding:8px 13px;font-weight:600;cursor:pointer;font-size:13px;margin-top:10px}
+  button.sec{background:transparent;color:var(--text);border:1px solid var(--border)}
+  button:hover{opacity:.9}
+  button:disabled{opacity:.5;cursor:default}
+  .full{grid-column:1/-1}
+  table{width:100%;border-collapse:collapse;margin-top:4px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);font-size:12.5px;vertical-align:middle}
+  th{color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-size:10.5px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .msg{margin-top:10px;font-size:12.5px;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg);white-space:pre-wrap;word-break:break-all;display:none}
+  .msg.show{display:block}
+  .msg.ok{border-color:var(--ok)} .msg.err{border-color:var(--bad);color:var(--bad)}
+  .muted{color:var(--muted)} .empty{color:var(--muted);padding:14px 0;text-align:center}
+  footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--border);color:var(--muted);font-size:11.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>BT<span class="tag">X</span></h1>
+    <div class="pill" id="status">
+      <span><span class="dot" id="dot"></span><span id="chain">connecting…</span></span>
+      <span>height <b id="height">–</b></span>
+      <span>sync <b id="sync">–</b></span>
+      <span>peers <b id="peers">–</b></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- WALLET -->
+    <div class="card">
+      <h2>Wallet</h2>
+      <div class="kv"><span class="muted">Spendable</span><span id="w_trusted">–</span></div>
+      <div class="kv"><span class="muted">Pending</span><span id="w_pending">–</span></div>
+      <div class="kv"><span class="muted">P2WPKH UTXOs</span><span id="w_count">–</span></div>
+      <button class="sec" onclick="newAddr()">New address</button>
+      <div class="msg" id="w_msg"></div>
+    </div>
+
+    <!-- MINING -->
+    <div class="card">
+      <h2>Mining</h2>
+      <div class="kv"><span class="muted">Tip</span><span id="m_blocks">–</span></div>
+      <div class="kv"><span class="muted">Difficulty</span><span id="m_diff">–</span></div>
+      <div class="kv"><span class="muted">Net hash/s</span><span id="m_hash">–</span></div>
+      <div class="kv"><span class="muted">Mempool txs</span><span id="m_pool">–</span></div>
+      <button id="m_btn" class="sec" onclick="mine()">Mine 1 (regtest)</button>
+      <div class="msg" id="m_msg"></div>
+    </div>
+
+    <!-- CREATE ORDER -->
+    <div class="card">
+      <h2>Publish an order</h2>
+      <label>Offer UTXO (your P2WPKH coin to sell)</label>
+      <select id="o_utxo"><option value="">— refresh wallet —</option></select>
+      <label>Price (BTC the taker pays you)</label>
+      <input id="o_price" value="0.001" spellcheck="false">
+      <label>Counter-asset rune id (block:tx) — blank = BTC-only order</label>
+      <input id="o_rune" placeholder="e.g. 131:1" spellcheck="false">
+      <label>Rune amount (base units; must match what the offer holds)</label>
+      <input id="o_amount" value="1000" spellcheck="false">
+      <label>Carrier</label>
+      <select id="o_carrier">
+        <option value="op_return">OP_RETURN</option>
+        <option value="envelope">Taproot witness envelope</option>
+      </select>
+      <button id="o_btn" onclick="createOrder()">Maker-sign &amp; publish</button>
+      <button id="o_etch" class="sec" onclick="etchRune()">Etch a test rune (regtest)</button>
+      <div class="msg" id="o_msg"></div>
+    </div>
+  </div>
+
+  <!-- OPEN ORDERS -->
+  <div class="card full" style="margin-top:14px">
+    <h2>Open orders (chain-reconstructed) — click Fill to take one</h2>
+    <table><thead><tr>
+      <th>Offer</th><th>Rune</th><th class="num">Amount</th><th class="num">Price (BTC)</th>
+      <th class="num">Announced</th><th></th>
+    </tr></thead><tbody id="orders"><tr><td colspan="6" class="empty">loading…</td></tr></tbody></table>
+    <div class="msg" id="f_msg"></div>
+  </div>
+
+  <!-- PENDING (MEMPOOL) ORDERS -->
+  <div class="card full" style="margin-top:14px">
+    <h2>Pending orders (mempool — not yet confirmed)</h2>
+    <table><thead><tr>
+      <th>Offer</th><th>Rune</th><th class="num">Amount</th><th class="num">Price (BTC)</th>
+      <th>Status</th><th></th>
+    </tr></thead><tbody id="mempool"><tr><td colspan="6" class="empty">loading…</td></tr></tbody></table>
+  </div>
+
+  <!-- RECENT TRADES -->
+  <div class="card full" style="margin-top:14px">
+    <h2>Live on-chain Runes trades (heuristic)</h2>
+    <table><thead><tr>
+      <th>Tx</th><th class="num">Height</th><th>Rune</th><th class="num">Amount</th><th class="num">Paid (BTC)</th>
+    </tr></thead><tbody id="trades"><tr><td colspan="5" class="empty">loading…</td></tr></tbody></table>
+  </div>
+
+  <!-- ADDRESSED SWAP (snipe-resistant, opt-in) -->
+  <div class="card full" style="margin-top:14px">
+    <h2>Addressed swap (snipe-resistant, opt-in)</h2>
+    <p class="muted" style="margin:.2em 0 1em">A private 1:1 swap that can't be sniped in the mempool: the maker signs the <em>whole</em> transaction (SIGHASH_ALL), so no one can substitute a different taker. The PSBT is exchanged out-of-band — no relay. Taker builds it on the left; maker verifies &amp; broadcasts on the right.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <div>
+        <h3 style="margin:.2em 0 .6em">1 · Taker — propose</h3>
+        <label>Maker's offer UTXO (txid:vout)</label>
+        <input id="sp_offer" placeholder="txid:vout" spellcheck="false">
+        <label>Price (BTC you pay the maker)</label>
+        <input id="sp_price" value="0.001" spellcheck="false">
+        <label>Maker payout address (they gave you)</label>
+        <input id="sp_makeraddr" placeholder="bcrt1…/tb1…" spellcheck="false">
+        <label>Rune id (block:tx) — blank = BTC-only</label>
+        <input id="sp_rune" placeholder="e.g. 131:1" spellcheck="false">
+        <label>Rune amount (base units)</label>
+        <input id="sp_amount" value="0" spellcheck="false">
+        <button onclick="proposeSwap()">Build PSBT (taker)</button>
+        <label>PSBT to send to the maker</label>
+        <textarea id="sp_psbt" rows="4" readonly placeholder="appears here after Build" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:11px"></textarea>
+        <div class="msg" id="sp_msg"></div>
+      </div>
+      <div>
+        <h3 style="margin:.2em 0 .6em">2 · Maker — verify &amp; countersign</h3>
+        <label>PSBT from the taker</label>
+        <textarea id="sc_psbt" rows="4" spellcheck="false" placeholder="paste the taker's PSBT" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:11px"></textarea>
+        <label>Your offer UTXO (txid:vout)</label>
+        <input id="sc_offer" placeholder="txid:vout" spellcheck="false">
+        <label>Price you agreed to receive (BTC)</label>
+        <input id="sc_price" value="0.001" spellcheck="false">
+        <label>Your payout address (verifies output 0 pays you)</label>
+        <input id="sc_makeraddr" placeholder="bcrt1…/tb1…" spellcheck="false">
+        <button onclick="countersignSwap()">Verify, sign &amp; broadcast (maker)</button>
+        <div class="msg" id="sc_msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer id="cfg">
+    One local program: full node + self-custody wallet + solo-mining + chain-reconstructed DEX. Served by
+    <code>btxd</code> — no website, no relay. Signing always goes through your own Bitcoin Core wallet.
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const sats2btc = s => (Number(s)/1e8).toLocaleString(undefined,{minimumFractionDigits:8,maximumFractionDigits:8});
+const short = (s,n)=> s && s.length>n ? s.slice(0,n)+'…' : (s||'');
+function msg(el, text, ok){ el.textContent = text; el.className = 'msg show ' + (ok?'ok':'err'); }
+function hide(el){ el.className='msg'; }
+async function jget(p){ const r = await fetch(p); const j = await r.json(); if(!r.ok||j.error) throw new Error(j.detail||j.error||('HTTP '+r.status)); return j; }
+async function jpost(p, body){ const r = await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}); const j = await r.json(); if(!r.ok||j.error) throw new Error(j.detail||j.error||('HTTP '+r.status)); return j; }
+
+async function refreshStatus(){
+  try{
+    const s = await jget('/api/node/status');
+    $('dot').classList.add('up');
+    $('chain').textContent = s.chain || 'node';
+    $('height').textContent = (s.blocks ?? '–') + (s.headers && s.headers!==s.blocks ? ' / '+s.headers : '');
+    $('sync').textContent = s.verificationprogress!=null ? (s.verificationprogress*100).toFixed(2)+'%' : '–';
+    $('peers').textContent = s.peers ?? '–';
+  }catch(e){ $('dot').classList.remove('up'); $('chain').textContent = 'node down'; }
+}
+
+async function refreshWallet(){
+  try{
+    const w = await jget('/api/wallet');
+    $('w_trusted').textContent = w.trusted!=null ? Number(w.trusted).toFixed(8)+' BTC' : '–';
+    $('w_pending').textContent = w.untrusted_pending!=null ? Number(w.untrusted_pending).toFixed(8) : '–';
+    const p2 = (w.utxos||[]).filter(u=>u.p2wpkh);
+    $('w_count').textContent = p2.length;
+    const sel = $('o_utxo'); const cur = sel.value;
+    sel.innerHTML = '<option value="">— select a coin —</option>' + p2.map(u=>
+      `<option value="${u.txid}:${u.vout}">${short(u.txid,10)}:${u.vout} · ${Number(u.amount).toFixed(8)} BTC</option>`).join('');
+    if(cur) sel.value = cur;
+  }catch(e){ $('w_count').textContent='node down'; }
+}
+
+async function refreshMining(){
+  try{
+    const m = await jget('/api/mining/info');
+    $('m_blocks').textContent = m.blocks ?? '–';
+    $('m_diff').textContent = m.difficulty!=null ? Number(m.difficulty).toPrecision(4) : '–';
+    $('m_hash').textContent = m.networkhashps!=null ? Number(m.networkhashps).toExponential(2) : '–';
+    $('m_pool').textContent = m.pooledtx ?? '–';
+    $('m_btn').disabled = (m.chain !== 'regtest');
+    if(m.chain!=='regtest') $('m_btn').textContent = 'Mine (regtest only)';
+  }catch(e){}
+}
+
+async function refreshOrders(){
+  try{
+    const list = await jget('/api/dex/orders');
+    const tb = $('orders');
+    if(!list.length){ tb.innerHTML='<tr><td colspan="6" class="empty">no open orders</td></tr>'; return; }
+    tb.innerHTML = list.map(o=>`<tr>
+      <td class="mono">${short(o.offer_txid,10)}:${o.offer_vout}</td>
+      <td class="mono">${o.rune_id}</td>
+      <td class="num">${Number(o.amount).toLocaleString()}</td>
+      <td class="num">${sats2btc(o.price)}</td>
+      <td class="num">${o.announce_height}</td>
+      <td><button class="sec" style="margin:0;padding:4px 9px" onclick='fillOrder(${JSON.stringify(o.artifact_hex)})'>Fill</button></td>
+    </tr>`).join('');
+  }catch(e){ $('orders').innerHTML='<tr><td colspan="6" class="empty">node/indexer down</td></tr>'; }
+}
+
+async function refreshMempool(){
+  try{
+    const list = await jget('/api/dex/mempool');
+    const tb = $('mempool');
+    if(!list.length){ tb.innerHTML='<tr><td colspan="6" class="empty">no pending orders in mempool</td></tr>'; return; }
+    tb.innerHTML = list.map(o=>`<tr>
+      <td class="mono">${short(o.offer_txid,10)}:${o.offer_vout}</td>
+      <td class="mono">${o.rune_id}</td>
+      <td class="num">${Number(o.amount).toLocaleString()}</td>
+      <td class="num">${sats2btc(o.price)}</td>
+      <td><span class="muted">pending</span></td>
+      <td><button class="sec" style="margin:0;padding:4px 9px" onclick='fillOrder(${JSON.stringify(o.artifact_hex)})'>Fill</button></td>
+    </tr>`).join('');
+  }catch(e){ $('mempool').innerHTML='<tr><td colspan="6" class="empty">node/indexer down</td></tr>'; }
+}
+
+async function refreshTrades(){
+  try{
+    const list = await jget('/api/dex/trades');
+    const tb = $('trades');
+    if(!list.length){ tb.innerHTML='<tr><td colspan="5" class="empty">no runes trades in recent window (mainnet shows real data)</td></tr>'; return; }
+    tb.innerHTML = list.map(t=>`<tr>
+      <td class="mono"><a href="https://mempool.space/tx/${t.txid}" target="_blank" rel="noopener">${short(t.txid,12)}</a></td>
+      <td class="num">${t.height}</td><td class="mono">${t.rune_id}</td>
+      <td class="num">${Number(t.amount).toLocaleString()}</td><td class="num">${sats2btc(t.btc_paid_sats)}</td>
+    </tr>`).join('');
+  }catch(e){ $('trades').innerHTML='<tr><td colspan="5" class="empty">indexer down</td></tr>'; }
+}
+
+async function newAddr(){
+  try{ const r = await jpost('/api/wallet/newaddress'); msg($('w_msg'), r.address, true); }
+  catch(e){ msg($('w_msg'), e.message, false); }
+}
+async function mine(){
+  hide($('m_msg'));
+  try{ const r = await jpost('/api/mining/generate', {n:1}); msg($('m_msg'), 'mined '+r.mined+' block(s)', true); refreshStatus(); refreshMining(); }
+  catch(e){ msg($('m_msg'), e.message, false); }
+}
+async function createOrder(){
+  const utxo = $('o_utxo').value; const btn = $('o_btn');
+  if(!utxo){ msg($('o_msg'),'pick an offer UTXO',false); return; }
+  const [txid, vout] = utxo.split(':');
+  const body = {offer_txid:txid, offer_vout:Number(vout), price_btc:Number($('o_price').value), carrier:$('o_carrier').value};
+  const rune = ($('o_rune').value || '').trim();
+  if(rune){
+    const [rb, rt] = rune.split(':');
+    if(rt===undefined){ msg($('o_msg'),'rune id must be block:tx (e.g. 131:1)',false); return; }
+    body.rune_block = Number(rb); body.rune_tx = Number(rt); body.amount_units = Number($('o_amount').value);
+  }
+  btn.disabled = true; msg($('o_msg'),'signing & publishing…',true);
+  try{
+    const r = await jpost('/api/order/create', body);
+    msg($('o_msg'), 'Published ('+r.carrier+'). announce txid:\n'+r.announce_txid, true);
+    refreshWallet(); setTimeout(refreshMempool, 1500); setTimeout(refreshOrders, 1500);
+  }catch(e){ msg($('o_msg'), e.message, false); }
+  btn.disabled = false;
+}
+async function etchRune(){
+  const b = $('o_etch'); hide($('o_msg'));
+  b.disabled = true; msg($('o_msg'),'etching a rune (mines commit + 6 + reveal, ~15s)…',true);
+  try{
+    const r = await jpost('/api/rune/etch', {premine:Number($('o_amount').value)||1000});
+    const id = (r.rune_block!=null) ? (r.rune_block+':'+r.rune_tx) : '';
+    $('o_rune').value = id; $('o_amount').value = r.premine;
+    await refreshWallet();
+    $('o_utxo').value = r.offer_txid+':'+r.offer_vout;     // the premine UTXO is the offer
+    msg($('o_msg'), 'Etched '+r.rune+(id?' (id '+id+')':' (ord still indexing — set the id manually)')+
+        '. Offer UTXO selected — set a price and Maker-sign & publish.', true);
+  }catch(e){ msg($('o_msg'), e.message, false); }
+  b.disabled = false;
+}
+function parseOutpoint(s){ const i=(s||'').trim().lastIndexOf(':'); if(i<1) return null;
+  const v=parseInt(s.trim().slice(i+1),10); return {txid:s.trim().slice(0,i), vout:v}; }
+async function proposeSwap(){
+  const b=$('sp_msg'); hide(b);
+  const op=parseOutpoint($('sp_offer').value);
+  if(!op || !op.txid || isNaN(op.vout)){ msg(b,"enter the maker's offer as txid:vout",false); return; }
+  if(!$('sp_makeraddr').value.trim()){ msg(b,'enter the maker payout address',false); return; }
+  const body={offer_txid:op.txid, offer_vout:op.vout, price_btc:Number($('sp_price').value),
+              maker_addr:$('sp_makeraddr').value.trim()};
+  const rn=parseOutpoint($('sp_rune').value);
+  if(rn){ body.rune_block=parseInt(rn.txid,10)||0; body.rune_tx=isNaN(rn.vout)?0:rn.vout;
+          body.amount_units=Number($('sp_amount').value)||0; }
+  msg(b,'building + taker-signing the PSBT…',true);
+  try{
+    const r=await jpost('/api/swap/propose', body);
+    $('sp_psbt').value=r.psbt||'';
+    // convenience for single-machine testing: prefill the maker panel
+    $('sc_psbt').value=r.psbt||''; $('sc_offer').value=$('sp_offer').value;
+    $('sc_price').value=$('sp_price').value; $('sc_makeraddr').value=$('sp_makeraddr').value;
+    msg(b,'PSBT ready (taker_complete='+r.taker_complete+'). Send it to the maker — or countersign on the right.',true);
+  }catch(e){ msg(b,e.message,false); }
+}
+async function countersignSwap(){
+  const b=$('sc_msg'); hide(b);
+  const op=parseOutpoint($('sc_offer').value);
+  if(!op || !op.txid || isNaN(op.vout)){ msg(b,'enter your offer as txid:vout',false); return; }
+  const psbt=$('sc_psbt').value.trim();
+  if(!psbt){ msg(b,'paste the taker PSBT',false); return; }
+  const body={psbt:psbt, offer_txid:op.txid, offer_vout:op.vout,
+              expect_price_btc:Number($('sc_price').value), expect_maker_addr:$('sc_makeraddr').value.trim()};
+  msg(b,'verifying output 0, signing SIGHASH_ALL, broadcasting…',true);
+  try{
+    const r=await jpost('/api/swap/countersign', body);
+    if(r.complete && r.txid){ msg(b,'Swap broadcast. txid:\n'+r.txid,true); refreshWallet(); }
+    else if(r.complete){ msg(b,'Finalized (not broadcast). tx hex:\n'+(r.final_tx_hex||''),true); }
+    else { msg(b,'Not fully signed: '+(r.note||'')+'\n'+(r.psbt||''),false); }
+  }catch(e){ msg(b,e.message,false); }
+}
+async function fillOrder(artifact){
+  hide($('f_msg')); msg($('f_msg'),'filling…',true);
+  try{
+    const r = await jpost('/api/order/fill', {artifact_hex:artifact});
+    msg($('f_msg'), 'Swap broadcast. txid:\n'+r.swap_txid, true);
+    refreshWallet(); setTimeout(refreshOrders, 1500);
+  }catch(e){ msg($('f_msg'), e.message, false); }
+}
+
+async function initConfig(){
+  const b = $('o_etch'); if(!b) return;
+  try{
+    const c = await jget('/api/config');
+    if(c.chain !== 'regtest'){ b.disabled = true; b.title = 'Etch test rune is regtest-only (chain: '+c.chain+')'; }
+    else if(!c.rune_oracle){ b.disabled = true; b.title = 'No rune oracle — start the bundle with ord (or pass --ord-url to btxd)'; }
+    else { b.disabled = false; b.title = ''; }
+  }catch(e){ /* leave button as-is if config unreachable */ }
+}
+function refreshAll(){ refreshStatus(); refreshWallet(); refreshMining(); refreshOrders(); refreshMempool(); refreshTrades(); }
+initConfig();
+refreshAll();
+setInterval(refreshStatus, 10000);
+setInterval(refreshMining, 15000);
+</script>
+</body>
+</html>

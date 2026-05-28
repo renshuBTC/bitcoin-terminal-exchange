@@ -1,0 +1,14 @@
+[1] start node
+  up after 2
+[2] fund maker-offer(1.0 BTC, carries 1000 RUNE) + taker(0.6 BTC)
+[3] build swap WITH runestone edict (rune -> taker output 1)
+  runestone scriptPubKey: 6a5d0800c0a23301e80701   (6a5d=OP_RETURN OP_13)
+[4] Core consensus check: does the runestone break the partial-signed swap? expect allowed=true
+   allowed= True | reason= None
+  settled txid=071eb41241baedf53f32903b39b46fa6fe1c14925e26c33d8124ba97ec03c420
+[5] reconstruct rune movement FROM CHAIN via minimal indexer
+   edicts (block,tx,amount,output): [[840000, 1, 1000, 1]]
+   RUNE on taker output#1 : 1000
+   RUNE on maker payout#0 : 0
+   unallocated            : {}
+DONE_OK

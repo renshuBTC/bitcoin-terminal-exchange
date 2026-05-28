@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — create an order</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#f7931a; --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px}
+  header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px}
+  h1{font-size:18px;margin:0;font-weight:600}
+  h1 .tag{color:var(--accent)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .controls{margin-left:auto}
+  main{padding:18px 22px;max-width:900px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 18px;margin-bottom:20px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input,select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 9px;font-family:var(--mono);font-size:12px}
+  h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px}
+  pre{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:0 0 6px;white-space:pre-wrap;word-break:break-all}
+  .copy{cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:11px;border:none;background:none;padding:0}
+  .copy:hover{text-decoration:underline}
+  .note{color:var(--muted);font-size:12px;margin:6px 0 18px;line-height:1.5}
+  b{color:var(--text);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>BT<span class="tag">X</span> — create an order</h1></div>
+  <div class="controls"><a href="btx_book.html">← order book</a></div>
+</header>
+<main>
+  <p class="note">This page builds the commands; it never touches your keys. Your wallet signs locally.
+    A maker offer pre-signs the spend of one P2WPKH UTXO with SIGHASH_SINGLE|ANYONECANPAY so that
+    whoever fills it must pay you exactly your price at output 0.</p>
+  <div class="grid">
+    <div><label>bitcoin-cli path</label><input id="cli" value="bitcoin-cli"></div>
+    <div><label>chain</label><select id="chain"><option>regtest</option><option>signet</option><option>main</option></select></div>
+    <div><label>datadir</label><input id="datadir" placeholder="/path/to/datadir"></div>
+    <div><label>wallet</label><input id="wallet" placeholder="wallet name"></div>
+    <div><label>offer UTXO txid</label><input id="txid" placeholder="64-hex txid of a P2WPKH output"></div>
+    <div><label>offer UTXO vout</label><input id="vout" value="0"></div>
+    <div><label>price you want (BTC)</label><input id="price" value="0.5"></div>
+    <div><label>asset amount (units)</label><input id="amount" value="1000"></div>
+    <div><label>expiry height (blank = none)</label><input id="expiry" placeholder="optional"></div>
+    <div><label>group id (0 = standalone)</label><input id="group" value="0"></div>
+    <div><label>carrier</label><select id="carrier"><option value="op_return">op_return</option><option value="envelope">envelope (Taproot)</option></select></div>
+  </div>
+
+  <h2>1. Maker-sign the offer</h2>
+  <pre id="signcmd"></pre><span id="signcopy"></span>
+  <div class="note">Run it; the JSON output includes <b>artifact_hex</b> (the serialized offer with your
+    pre-signature) and <b>maker_sig_self_verifies: true</b>. The offer UTXO is auto-locked so funding
+    can't accidentally spend it.</div>
+
+  <h2>2. Publish the artifact on-chain</h2>
+  <div id="publish"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const v = id => $('#'+id).value.trim();
+function copyBtn(getText,label){
+  const id='c'+Math.random().toString(36).slice(2);
+  setTimeout(()=>{const el=document.getElementById(id); if(el) el.onclick=()=>{navigator.clipboard.writeText(getText());el.textContent='copied';setTimeout(()=>el.textContent=label,1200);};},0);
+  return `<button class="copy" id="${id}">${label}</button>`;
+}
+function bcli(){ return `${v('cli')||'bitcoin-cli'} -${v('chain')==='main'?'chain=main':v('chain')} ${v('datadir')?`-datadir=${v('datadir')} `:''}${v('wallet')?`-rpcwallet=${v('wallet')}`:''}`.replace(/\s+/g,' ').trim(); }
+
+function signCommand(){
+  let c = `python3 btx_wallet.py maker-sign --bitcoin-cli ${v('cli')||'bitcoin-cli'} --chain ${v('chain')}`;
+  if(v('datadir')) c+=` --datadir ${v('datadir')}`;
+  if(v('wallet')) c+=` --wallet ${v('wallet')}`;
+  c+=` \\\n  --offer-txid ${v('txid')||'<TXID>'} --offer-vout ${v('vout')||'0'} --price-btc ${v('price')||'0.5'}`;
+  if(v('amount')&&v('amount')!=='1000') c+=` --amount-units ${v('amount')}`;
+  if(v('expiry')) c+=` --expiry ${v('expiry')}`;
+  if(v('group')&&v('group')!=='0') c+=` --group-id ${v('group')}`;
+  if(v('carrier')!=='op_return') c+=` --carrier ${v('carrier')}`;
+  return c;
+}
+
+function publishBlock(){
+  if(v('carrier')==='op_return'){
+    const cli = bcli();
+    const cmd = `# paste the artifact_hex from step 1 into ART, then:\nART=<ARTIFACT_HEX>\nRAW=$(${cli} createrawtransaction '[]' "[{\\"data\\":\\"$ART\\"}]")\nFUNDED=$(${cli} fundrawtransaction "$RAW" | python3 -c 'import sys,json;print(json.load(sys.stdin)["hex"])')\nSIGNED=$(${cli} signrawtransactionwithwallet "$FUNDED" | python3 -c 'import sys,json;print(json.load(sys.stdin)["hex"])')\n${cli} sendrawtransaction "$SIGNED"`;
+    return `<pre id="pub">${cmd.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}</pre>${copyBtn(()=>cmd,'copy publish commands')}
+      <div class="note">OP_RETURN of ~206 bytes needs a node that relays it: Bitcoin Core v30+ allows it by default; on older nodes start bitcoind with <b>-datacarriersize=240</b>.</div>`;
+  }
+  return `<div class="note">Envelope carrier: build the Taproot witness-envelope commit/reveal with
+    <b>btx_taproot.py</b> (BIP341 commit→reveal), embedding the artifact_hex. Witness data isn't
+    subject to <b>-datacarriersize</b>, so it relays on default nodes. See BTX-wallet-runbook.md.</div>`;
+}
+
+function update(){
+  const sc = signCommand();
+  $('#signcmd').textContent = sc;
+  $('#signcopy').innerHTML = copyBtn(()=>signCommand(),'copy maker-sign command');
+  $('#publish').innerHTML = publishBlock();
+}
+document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',update));
+update();
+</script>
+</body>
+</html>

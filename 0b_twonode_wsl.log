@@ -1,0 +1,20 @@
+[1] start two nodes (B connects to A by P2P only)
+  both up after 2
+  B<->A peer connected
+[2] node A: fund maker offer(1.0) + taker pay(0.6); mine so they confirm
+[3] node A: publish BTX artifact on-chain, mine the block
+  announce txid=f839e1eea8e43b556cc0161acba46a6c21a6d271389c37cdd09c3ea36b0036e9 at A height 103
+[4] wait for node B to receive the block via P2P (no shared files)
+  B synced to height 103
+[5] node B ONLY: reconstruct order from B's chain + verify maker sig from chain data
+   B parsed order from P2P-delivered block: price 50000000 offer_vout 0
+   B verified maker sig from chain data only: True
+[6] node B: build + broadcast the swap from the on-chain artifact
+   B testmempoolaccept: allowed= True reason= None
+   B broadcast swap txid=564938c61239141aeda4db5c401b78ffbbf4aaec99ae35eda2c2bdbe037d928f
+[7] swap propagates B->A; A mines; both confirm
+  A saw swap in mempool
+[8] settlement, checked on node B
+   maker payout (output0) on B: 0.5 BTC, conf 1
+   offer UTXO on B: spent (consumed)
+DONE_0B_TWONODE

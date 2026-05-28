@@ -1,0 +1,17 @@
+BTX Runes leg — encoding + minimal-indexer proof (pure Python; no node)
+Date: Fri May 22 23:19:46 UTC 2026
+
+runestone scriptPubKey: 6a5d0800c0a23301e80701
+  6a=OP_RETURN  5d=OP_13(Runes magic)  08=push8  payload=00 c0a233 01 e807 01
+  => Tag::Body(0), block-delta 840000, tx-delta 1, amount 1000, output 1
+
+Indexer result (reconstructed from tx bytes):
+  edicts: [[840000, 1, 1000, 1]]
+  RUNE on taker output #1: 1000 (expect 1000)
+  RUNE on maker payout #0: 0 (expect 0)
+  unallocated: {}
+  RESULT: PASS
+
+NOTE: on-node mempool-acceptance of this tx was NOT re-run this session — the sandbox
+began SIGKILLing bitcoind launches after Milestone 0a succeeded. See spec for the
+analytical argument (runestone is push-only standard nulldata; maker SINGLE sig unaffected).

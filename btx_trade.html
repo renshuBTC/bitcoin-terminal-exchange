@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — trade</title>
+<style>
+  :root{
+    --bg:#0b0e11; --panel:#11151c; --panel2:#161b24; --line:#222a35; --line2:#2c3644;
+    --tx:#e7ebf2; --muted:#8b94a6; --dim:#5d6675;
+    --green:#1fc7a8; --greenbg:rgba(31,199,168,.12);
+    --red:#f6465d; --redbg:rgba(246,70,93,.12);
+    --accent:#f7931a; --info:#3b82f6; --infobg:rgba(59,130,246,.14);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--info);text-decoration:none}
+  .mono{font-family:var(--mono)}
+  .g{color:var(--green)} .r{color:var(--red)} .muted{color:var(--muted)} .dim{color:var(--dim)}
+  header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .logo{font-weight:700;font-size:16px;letter-spacing:.5px}.logo b{color:var(--accent)}
+  .stat{font-size:12px}.stat .l{color:var(--dim);margin-right:5px}
+  .pill{font-size:11px;border:1px solid var(--line2);border-radius:6px;padding:3px 8px;color:var(--muted)}
+  .pill.ok{color:var(--info);border-color:var(--info);background:var(--infobg)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);display:inline-block;margin-right:5px}
+  .dot.up{background:var(--green)}
+  main{display:grid;grid-template-columns:1.6fr 0.95fr 1fr;gap:8px;padding:8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .card h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  /* order book */
+  .obhead,.obrow{display:grid;grid-template-columns:1fr 1fr 1fr;font-size:12px}
+  .obhead{color:var(--dim);font-size:11px;margin-bottom:4px}
+  .obrow{position:relative;padding:2px 0;cursor:pointer}
+  .obrow:hover{background:var(--panel2)}
+  .obrow .bar{position:absolute;right:0;top:0;bottom:0;border-radius:3px}
+  .obrow span{position:relative;z-index:1}
+  .spread{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 0;margin:4px 0}
+  /* panel */
+  .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .tab{flex:1;min-width:60px;text-align:center;padding:6px 4px;font-size:12px;border:1px solid var(--line2);border-radius:6px;color:var(--muted);cursor:pointer;background:transparent}
+  .tab.on{color:var(--info);border-color:var(--info);background:var(--infobg)}
+  label{display:block;font-size:11px;color:var(--muted);margin:8px 0 3px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;color:var(--tx);padding:7px 8px;font:13px var(--mono)}
+  input:focus,select:focus{outline:none;border-color:var(--info)}
+  button.act{width:100%;margin-top:10px;padding:9px;border:1px solid var(--info);background:var(--infobg);color:#cfe0ff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
+  button.act:hover{background:rgba(59,130,246,.24)}
+  button.sec{background:transparent;border:1px solid var(--line2);color:var(--muted)}
+  .seg{display:flex;gap:6px}.seg button{flex:1}
+  .note{font-size:10.5px;color:var(--dim);line-height:1.5;margin-top:8px}
+  .msg{font-size:11.5px;margin-top:8px;white-space:pre-wrap;word-break:break-all;display:none}
+  .msg.show{display:block}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+  /* bottom */
+  .bottom{margin:0 8px 10px}
+  .btabs{display:flex;gap:16px;padding:8px 12px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:var(--panel);font-size:12px}
+  .btabs span{color:var(--muted);cursor:pointer;padding-bottom:6px}
+  .btabs span.on{color:var(--tx);border-bottom:2px solid var(--info)}
+  table{width:100%;border-collapse:collapse;font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:0 0 8px 8px}
+  th{color:var(--dim);font-weight:500;text-align:left;padding:6px 12px;font-size:11px}
+  td{padding:6px 12px;border-top:1px solid var(--line);font-family:var(--mono)}
+  tr.click{cursor:pointer} tr.click:hover td{background:var(--panel2)}
+  .num{text-align:right}
+  .empty{color:var(--dim);text-align:center;padding:14px}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">BT<b>X</b></span>
+  <span class="stat"><span class="dot" id="dot"></span><span id="chain">node</span> <span class="dim" id="height">–</span></span>
+  <span class="stat"><span class="l">pair</span><span id="pair">BTX•USD•TESTS / BTC</span></span>
+  <span class="stat"><span class="l">last</span><span class="mono" id="last">–</span> <span class="dim">sats</span></span>
+  <span class="stat"><span class="l">stream</span><span class="mono" id="streambadge" title="client-side event-stream follower — independently re-folds the cumulative commitment and detects reorg/omission across refreshes">–</span></span>
+  <span class="stat"><span class="l">24h vol</span><span class="mono" id="vol">–</span></span>
+  <span class="stat"><span class="l">wallet</span><span class="mono g" id="bal">–</span> <span class="dim">BTC</span></span>
+  <span class="pill" id="sync">sync –</span>
+  <span class="pill ok" style="margin-left:auto">spot · Bitcoin L1 · no leverage</span>
+  <span class="pill" id="oracle">oracle –</span>
+</header>
+
+<main>
+  <!-- CHART -->
+  <div class="card">
+    <h3>Price — on-chain fills (block-paced)</h3>
+    <div id="chart" style="min-height:170px"></div>
+    <div class="note" id="chartnote">rune↔BTC price reconstructed from confirmed swaps. Sparse by nature — Bitcoin blocks, not ticks.</div>
+  </div>
+
+  <!-- ORDER BOOK -->
+  <div class="card">
+    <h3 style="display:flex;justify-content:space-between;align-items:center">Order book <span id="bookhash" style="font-size:10px;color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0" title="content hash of the canonical book — any two indexers over the same chain match">book –</span></h3>
+    <div class="obhead"><span>Price (sats)</span><span class="num">Size</span><span class="num">Total</span></div>
+    <div id="asks"></div>
+    <div id="batchbar" style="display:none;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;padding:6px 8px;background:var(--redbg);border-radius:6px;font-size:12px">
+      <span id="batchinfo" class="mono"></span>
+      <span style="display:flex;gap:6px">
+        <button class="tab" onclick="clearSel()">Clear</button>
+        <button class="act" style="width:auto;padding:4px 10px;margin:0" onclick="batchFill()">Batch fill</button>
+      </span>
+    </div>
+    <div class="spread"><span>spread</span><span id="spread">–</span></div>
+    <div id="bids"></div>
+    <div class="note">BTX orders are one-sided pre-signed offers, so the book is sell-side unless buy-rune offers exist. Click a row to load one into Fill, or tick several asks and Batch fill them in a single transaction.</div>
+  </div>
+
+  <!-- ORDER PANEL -->
+  <div class="card">
+    <div class="tabs">
+      <button class="tab on" data-p="publish" onclick="setPanel('publish')">Publish</button>
+      <button class="tab" data-p="fill" onclick="setPanel('fill')">Fill</button>
+      <button class="tab" data-p="etch" onclick="setPanel('etch')">Etch</button>
+      <button class="tab" data-p="otc" onclick="setPanel('otc')">OTC</button>
+      <button class="tab" data-p="rune" onclick="setPanel('rune')">Rune↔Rune</button>
+    </div>
+
+    <div id="p-publish">
+      <div class="seg"><button class="sec" style="border-color:var(--green);color:var(--green)">Sell rune</button><button class="sec">Buy rune</button></div>
+      <label>Offer UTXO (your P2WPKH coin)</label>
+      <select id="o_utxo"><option value="">— refresh wallet —</option></select>
+      <label>Price (BTC the taker pays)</label>
+      <input id="o_price" value="0.001">
+      <label>Counter-asset rune id (block:tx) — blank = BTC-only</label>
+      <input id="o_rune" placeholder="e.g. 131:1">
+      <label>Rune amount (base units)</label>
+      <input id="o_amount" value="1000">
+      <label>Carrier</label>
+      <select id="o_carrier"><option value="op_return">OP_RETURN</option><option value="envelope">Taproot envelope</option></select>
+      <button class="act" onclick="createOrder()">Maker-sign &amp; publish</button>
+      <div class="note"><i></i>self-custody · signs via your Bitcoin Core wallet · settles in one on-chain tx</div>
+      <div class="msg" id="o_msg"></div>
+    </div>
+
+    <div id="p-fill" style="display:none">
+      <label>Order artifact (click a book row, or paste)</label>
+      <input id="f_art" placeholder="BTX1 artifact hex">
+      <button class="act" onclick="fillOrder()">Fill — build &amp; broadcast swap</button>
+      <div class="note">taker funds + signs; the maker's pre-signature is dropped in; rune routes to your output.</div>
+      <div class="msg" id="f_msg"></div>
+    </div>
+
+    <div id="p-etch" style="display:none">
+      <label>Premine (base units)</label>
+      <input id="e_amount" value="1000">
+      <button class="act" id="e_btn" onclick="etchRune()">Etch a test rune (regtest)</button>
+      <div class="note">regtest-only — mines commit + 6 + reveal. On signet/mainnet, etch out-of-band (btx_etch etch-reveal).</div>
+      <div class="msg" id="e_msg"></div>
+    </div>
+
+    <div id="p-otc" style="display:none">
+      <label>Snipe-resistant addressed swap (BIP-174 PSBT, two parties)</label>
+      <div class="note" style="margin-top:0">Taker proposes → maker verifies output 0 &amp; countersigns SIGHASH_ALL. PSBT exchanged out-of-band; no relay.</div>
+      <label>Offer UTXO (txid:vout)</label><input id="a_offer" placeholder="txid:vout">
+      <label>Price (sats) · Maker addr</label>
+      <div class="seg"><input id="a_price" value="10000"><input id="a_maker" placeholder="bcrt1…/tb1…"></div>
+      <label>Rune id (block:tx) · amount</label>
+      <div class="seg"><input id="a_rune" placeholder="131:1"><input id="a_amt" value="1000"></div>
+      <button class="act sec" onclick="proposeSwap()">Taker: build PSBT</button>
+      <label>PSBT</label><input id="a_psbt" placeholder="paste / generated">
+      <button class="act" onclick="countersignSwap()">Maker: verify, sign &amp; broadcast</button>
+      <div class="msg" id="a_msg"></div>
+    </div>
+
+    <div id="p-rune" style="display:none">
+      <label>Rune↔rune swap — sell rune A for rune B (addressed; needs ord)</label>
+      <div class="note" style="margin-top:0">The only trustless rune↔rune path: maker signs SIGHASH_ALL over the whole tx, so they verify (via ord) that output 0 receives the counter-rune before countersigning. Two parties, PSBT out-of-band.</div>
+      <label>Offer UTXO holding rune A (txid:vout)</label><input id="r_offer" placeholder="txid:vout">
+      <label>Rune A you SELL (block:tx) · amount (all of it)</label>
+      <div class="seg"><input id="r_rune_a" placeholder="326:1"><input id="r_amt_a" value="5000"></div>
+      <label>Rune B you RECEIVE (block:tx) · amount</label>
+      <div class="seg"><input id="r_rune_b" placeholder="334:1"><input id="r_amt_b" value="2000"></div>
+      <label>Maker receive address (gets rune B at output 0)</label><input id="r_maker" placeholder="bcrt1…/tb1…">
+      <button class="act sec" onclick="proposeRuneSwap()">Taker: build PSBT</button>
+      <label>PSBT</label><input id="r_psbt" placeholder="paste / generated">
+      <button class="act" onclick="countersignRuneSwap()">Maker: verify rune B, sign &amp; broadcast</button>
+      <div class="msg" id="r_msg"></div>
+    </div>
+  </div>
+</main>
+
+<div class="bottom">
+  <div class="btabs">
+    <span class="on" data-b="orders" onclick="setBottom('orders')">Open orders</span>
+    <span data-b="mempool" onclick="setBottom('mempool')">Pending</span>
+    <span data-b="trades" onclick="setBottom('trades')">Trades</span>
+    <span data-b="wallet" onclick="setBottom('wallet')">Wallet</span>
+  </div>
+  <table><tbody id="bottomBody"><tr><td class="empty">loading…</td></tr></tbody></table>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=0)=>Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const short=(s,n)=> s&&s.length>n? s.slice(0,n)+'…':(s||'');
+// esc(): HTML-entity-escape any served/on-chain string before it reaches innerHTML. Today's served
+// fields are numeric/hex (rune_id="block:tx", txid hex, artifact_hex), so this is defense-in-depth —
+// it keeps a free-text field (e.g. an ord rune name/symbol) from ever becoming stored XSS if one is
+// added later. Covers both element text and single-quoted attribute / onclick-string contexts.
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---- light-client verification: prove a served order is in the indexer's committed Merkle book root ----
+// Mirrors btx_orderbook.book_root / btx.rs book_root_from_views byte-for-byte (leaf tag 0x00, node tag
+// 0x01; side hardcoded 0 to match the server's canonical leaf). Verifies ONE order against
+// /api/dex/book-root using a log-sized /api/dex/order-proof — no full book, no full node. NOTE: amount is
+// read as a JS Number, which is exact for sats and rune amounts < 2^53; a very-large-divisibility rune
+// amount above 2^53 would need BigInt — out of scope for this terminal (the Python/Rust paths are exact).
+async function _sha256(b){ return new Uint8Array(await crypto.subtle.digest('SHA-256', b)); }
+function _cat(...a){ let n=a.reduce((s,x)=>s+x.length,0),o=new Uint8Array(n),i=0; for(const x of a){o.set(x,i);i+=x.length;} return o; }
+function _hb(h){ const b=new Uint8Array(h.length/2); for(let i=0;i<b.length;i++) b[i]=parseInt(h.substr(i*2,2),16); return b; }
+function _bh(b){ return [...b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+async function _leaf(o){
+  const line=`${o.rune_id||'0:0'}|0|${o.price||0}|${o.amount||0}|${o.announce_height||0}|${o.offer_txid}:${o.offer_vout}\n`;
+  return _sha256(_cat(new Uint8Array([0]), new TextEncoder().encode(line)));
+}
+async function verifyOrderInRoot(o){
+  try{
+    const root=(await jget('/api/dex/book-root')).root;
+    const proof=await jget(`/api/dex/order-proof/${o.offer_txid}/${o.offer_vout}`);
+    if(!proof||!proof.path) return false;
+    let h=await _leaf(o);
+    for(const s of proof.path){ const sib=_hb(s.hash);
+      h = s.dir==='L' ? await _sha256(_cat(new Uint8Array([1]),sib,h)) : await _sha256(_cat(new Uint8Array([1]),h,sib)); }
+    return _bh(h)===root;
+  }catch(e){ return false; }
+}
+// After the book renders, prove ONE served order is in the committed root and augment the book badge.
+async function verifyTopInRoot(o, el, baseBadge){
+  if(!o || !o.offer_txid) return;
+  if(await verifyOrderInRoot(o)){
+    el.textContent = baseBadge + ' · ✓ order verified in root';
+    el.style.color = 'var(--green)';
+    el.title = "A served order was proven to be in the indexer's committed Merkle book root via a "
+             + "log-sized membership proof — verifiable without downloading the whole book or running a full node.";
+  }
+}
+// ---- light-client event-STREAM follower: fold the cumulative commitment ourselves ----------------
+// Mirrors btx_orderbook.event_stream / btx.rs event_stream_from_views byte-for-byte: genesis 00*32,
+// then cum = sha256(0x03 || cum_prev(32) || height(be4) || block_hash(32)) per event-bearing block.
+// We re-fold /api/dex/event-stream ourselves and confirm (a) every served `cumulative` folds from its
+// own per-block digest, (b) the final equals the standalone /api/dex/event-hash, and (c) the cumulative
+// THROUGH a remembered checkpoint height is unchanged across refreshes (reorg/omission/history-rewrite
+// guard). No full node, no full-book download — and no amounts enter the fold, so it is exact in JS.
+function _be4(n){ n=Number(n)>>>0; return new Uint8Array([(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255]); }
+let CP_STREAM=null; // {height,cumulative} session checkpoint; in-memory by design (per-session reorg guard)
+async function followEventStream(){
+  const el=$('streambadge'); if(!el) return;
+  try{
+    const stream=await jget('/api/dex/event-stream');
+    let eh=null; try{ eh=await jget('/api/dex/event-hash'); }catch(e){}
+    let cum='00'.repeat(32), prevH=null;
+    for(const blk of (stream||[])){
+      const h=Number(blk.height);
+      if(prevH!==null && h<=prevH) throw new Error('non-monotonic height '+h);
+      cum=_bh(await _sha256(_cat(new Uint8Array([3]), _hb(cum), _be4(h), _hb(blk.block_hash))));
+      if(cum!==blk.cumulative) throw new Error('cumulative mismatch at height '+h);
+      prevH=h;
+    }
+    if(eh && eh.cumulative && cum!==eh.cumulative) throw new Error('final != /event-hash');
+    // reorg / omission / history-rewrite guard against the previously-accepted checkpoint
+    if(CP_STREAM){
+      const at=(stream||[]).find(b=>Number(b.height)===CP_STREAM.height);
+      const tip=(stream&&stream.length)?Number(stream[stream.length-1].height):-1;
+      if(at===undefined){
+        if(tip>=CP_STREAM.height){ el.textContent='⚠ reorg'; el.style.color='var(--red)';
+          el.title='checkpoint event block '+CP_STREAM.height+' vanished from a stream extending to '+tip
+                  +' — committed history was rewritten (poll a second indexer to adjudicate).'; return; }
+      } else if(at.cumulative!==CP_STREAM.cumulative){ el.textContent='⚠ rewrite'; el.style.color='var(--red)';
+        el.title='cumulative through height '+CP_STREAM.height+' changed — a reorg reordered/replaced a '
+                +'committed order event (poll a second indexer to adjudicate).'; return; }
+    }
+    if(stream&&stream.length){ const t=stream[stream.length-1]; CP_STREAM={height:Number(t.height),cumulative:t.cumulative}; }
+    el.textContent='✓ '+cum.slice(0,8)+'…';
+    el.style.color='var(--green)';
+    el.title='Followed the event stream client-side: independently re-folded '+(stream?stream.length:0)
+            +' event block(s) and matched the indexer’s /event-hash cumulative'
+            +(eh?(' ('+eh.n_events+' events)'):'')+'. Reorg/omission would flip this badge. No full node, no full-book download.';
+  }catch(e){
+    el.textContent='⚠ unverified'; el.style.color='var(--amber,#caa23a)';
+    el.title='event-stream follow failed: '+(e&&e.message?e.message:e);
+  }
+}
+function msg(el,t,ok){el.textContent=t;el.className='msg show '+(ok?'ok':'err');}
+function hide(el){el.className='msg';}
+async function jget(p){const r=await fetch(p);const j=await r.json();if(!r.ok||j.error)throw new Error(j.detail||j.error||('HTTP '+r.status));return j;}
+async function jpost(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.detail||j.error||('HTTP '+r.status));return j;}
+const op=s=>{const i=(s||'').trim().lastIndexOf(':');return i<1?null:{txid:s.trim().slice(0,i),vout:parseInt(s.trim().slice(i+1),10)};};
+
+function setPanel(p){['publish','fill','etch','otc','rune'].forEach(x=>{$('p-'+x).style.display=x===p?'':'none';});
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.p===p));}
+let BOTTOM='orders', LAST={orders:[],mempool:[],trades:[],wallet:null}, TIP=0;
+// confirmations badge for a confirmed event at block `h`; mainnet finality is depth, not 1-conf.
+function confLabel(h){if(!TIP||!h)return '';const c=TIP-h+1;if(c<1)return '';
+  const col=c>=6?'var(--green)':(c>=1?'var(--amber,#caa23a)':'var(--dim)');
+  return `<span class="mono" style="color:${col}" title="confirmations — wait for several before treating a fill as final on mainnet">${c} conf</span>`;}
+function setBottom(b){BOTTOM=b;document.querySelectorAll('.btabs span').forEach(s=>s.classList.toggle('on',s.dataset.b===b));renderBottom();}
+
+async function refreshStatus(){
+  try{const s=await jget('/api/node/status');$('dot').classList.add('up');
+    if(s.blocks!=null)TIP=s.blocks;
+    $('chain').textContent=s.chain||'node';$('height').textContent='block '+(s.blocks??'–');
+    $('sync').textContent='sync '+(s.verificationprogress!=null?(s.verificationprogress*100).toFixed(1)+'%':'–');
+  }catch(e){$('dot').classList.remove('up');$('chain').textContent='node down';}
+}
+async function refreshConfig(){try{const c=await jget('/api/config');$('oracle').textContent=c.rune_oracle?'oracle on':'oracle off';
+  const e=$('e_btn');if(c.chain!=='regtest'){e.disabled=true;e.title='etch button is regtest-only';}}catch(e){}}
+async function refreshWallet(){
+  try{const w=await jget('/api/wallet');
+    $('bal').textContent=w.trusted!=null?Number(w.trusted).toFixed(8):'–';
+    const p2=(w.utxos||[]).filter(u=>u.p2wpkh);LAST.wallet=p2;
+    const sel=$('o_utxo'),cur=sel.value;
+    sel.innerHTML='<option value="">— select a coin —</option>'+p2.map(u=>`<option value="${u.txid}:${u.vout}">${short(u.txid,8)}:${u.vout} · ${Number(u.amount).toFixed(8)}</option>`).join('');
+    if(cur)sel.value=cur; if(BOTTOM==='wallet')renderBottom();
+  }catch(e){$('bal').textContent='–';}
+}
+async function refreshBook(){
+  try{const r=await jget('/api/dex/book');const book=r.book||{};
+    // flatten every pair's asks for the bottom Open-orders tab (carries artifact_hex for fill)
+    LAST.orders=Object.values(book).flatMap(x=>x.asks||[]);
+    // render the busiest pair as the active market
+    let pair=null,best=-1;for(const p in book){const n=(book[p].asks||[]).length;if(n>best){best=n;pair=p;}}
+    if(pair)$('pair').textContent=(pair==='BTC'?'BTC-only':pair)+' / BTC';
+    const b=pair?book[pair]:{asks:[],bids:[],best_ask:null,best_bid:null};
+    const asks=b.asks||[],bids=b.bids||[];
+    const amax=asks.length?asks[asks.length-1].total:1, bmax=bids.length?bids[bids.length-1].total:1;
+    $('asks').innerHTML=asks.length? asks.slice().reverse().map(a=>obrow(a,amax,'ask')).join('') : '<div class="empty">no open orders</div>';
+    $('bids').innerHTML=bids.length? bids.map(a=>obrow(a,bmax,'bid')).join('') : '';
+    $('spread').textContent = b.best_ask!=null ? (b.best_ask.toLocaleString()+' best ask'+(b.best_bid!=null?(' · '+b.best_bid.toLocaleString()+' bid'):'')) : '–';
+    if(r.hash){
+      let badge='book '+r.hash.slice(0,10)+'… · '+(r.n_orders||0)+' orders';
+      const el=$('bookhash');
+      if(r.consensus===true){badge+=' · indexer agreed';el.style.color='var(--green)';el.title='Python and the brk-btx Rust indexer computed the SAME book hash — two independent implementations agree on the chain-reconstructed book.';}
+      else if(r.indexer_hash){badge+=' · INDEXER MISMATCH';el.style.color='var(--red)';el.title='The Rust indexer hash ('+r.indexer_hash.slice(0,10)+'…) differs from the local hash — the two indexers disagree on the book.';}
+      else{el.style.color='var(--dim)';}
+      el.textContent=badge;
+      verifyTopInRoot(asks[0]||bids[0], el, badge);   // light-client check: prove a row is in the committed root
+    }
+    renderBatchBar();
+    if(BOTTOM==='orders')renderBottom();
+  }catch(e){$('asks').innerHTML='<div class="empty">book unavailable</div>';}
+}
+function obrow(r,max,kind){
+  const w=Math.round((r.total||0)/max*100);
+  const col=kind==='ask'?'var(--red)':'var(--green)';const bar=kind==='ask'?'var(--redbg)':'var(--greenbg)';
+  const size=(r.amount||0)>=1000?((r.amount/1000).toFixed(1)+'k'):String(r.amount||0);
+  const art=r.artifact_hex||"";
+  // asks are fillable: a checkbox adds the order to a batch (one tx sweeping many asks)
+  const chk=(kind==='ask'&&art)?`<input type="checkbox" class="obchk" ${SEL.has(art)?'checked':''} `
+    +`onclick='event.stopPropagation();toggleSel(${esc(JSON.stringify(art))},${r.price||0},${r.amount||0})'>`:'';
+  // normalized price: sats per WHOLE rune (needs ord divisibility) > sats per base unit > raw total.
+  const up = r.norm_price!=null ? r.norm_price : (r.unit_price!=null ? r.unit_price : (r.price||0));
+  const pdisp = up>=1000 ? Math.round(up).toLocaleString() : up.toLocaleString(undefined,{maximumFractionDigits:4});
+  const punit = r.norm_price!=null ? 'sats/rune' : (r.unit_price!=null ? 'sats/unit' : 'sats');
+  const ptitle = `${(r.price||0).toLocaleString()} sats total for ${(r.amount||0).toLocaleString()} units · ${punit}`;
+  return `<div class="obrow" onclick='loadFill(${esc(JSON.stringify(art))})'>`
+    +`<span class="bar" style="width:${w}%;background:${bar}"></span>`
+    +chk
+    +`<span class="mono" style="color:${col}" title="${ptitle}">${pdisp}</span>`
+    +`<span class="num mono">${size}</span>`
+    +`<span class="num mono muted">${((r.total||0)/1000).toFixed(1)}k</span></div>`;
+}
+function loadFill(art){if(!art)return;setPanel('fill');$('f_art').value=art;}
+
+// ---- batch fill: select several asks, sweep them in ONE tx via /api/swap/batch-fill ----
+const SEL=new Map();   // artifact_hex -> {price, amount}
+function toggleSel(art,price,amount){
+  if(SEL.has(art))SEL.delete(art); else SEL.set(art,{price:price||0,amount:amount||0});
+  renderBatchBar();
+}
+function clearSel(){SEL.clear();renderBatchBar();refreshBook();}
+function renderBatchBar(){
+  const bar=$('batchbar');if(!bar)return;
+  const n=SEL.size;
+  if(!n){bar.style.display='none';return;}
+  let cost=0;for(const v of SEL.values())cost+=v.price||0;
+  bar.style.display='flex';
+  $('batchinfo').textContent=`${n} ask${n>1?'s':''} selected · pay ${cost.toLocaleString()} sats`;
+}
+async function batchFill(){
+  const b=$('f_msg');const arts=[...SEL.keys()];
+  if(!arts.length)return;
+  setPanel('fill');hide(b);msg(b,`Building one tx that fills ${arts.length} asks…`,true);
+  try{const r=await jpost('/api/swap/batch-fill',{artifact_hex:arts});
+    msg(b,`Batch swap broadcast (${r.n_offers} offers, fee ${r.fee_sats} sats). txid:\n`+r.swap_txid,true);
+    SEL.clear();renderBatchBar();refreshWallet();setTimeout(refreshBook,1500);
+  }catch(e){msg(b,e.message,false);}
+}
+async function refreshTrades(){try{const t=await jget('/api/dex/trades');LAST.trades=t||[];drawChart(t||[]);
+  if((t||[]).length){const byh=t.slice().sort((a,b)=>(tField(a,['height','block'])||0)-(tField(b,['height','block'])||0));
+    const lt=byh[byh.length-1],paid=tField(lt,['paid','paid_sats','price'])||0,amt=tField(lt,['amount','amt'])||0;
+    $('last').textContent=amt?Math.round(paid/amt).toLocaleString():'–';
+    $('vol').textContent=t.reduce((s,x)=>s+(tField(x,['paid','paid_sats','price'])||0),0).toLocaleString()+' sats';}
+  if(BOTTOM==='trades')renderBottom();}catch(e){}}
+async function refreshMempool(){try{const m=await jget('/api/dex/mempool');LAST.mempool=m||[];if(BOTTOM==='mempool')renderBottom();}catch(e){}}
+
+function tField(x,keys){for(const k of keys)if(x[k]!=null)return x[k];return null;}
+function drawChart(t){
+  const note=$('chartnote');
+  const pts=t.map(x=>{const paid=tField(x,['paid','paid_sats','price'])||0,amt=tField(x,['amount','amt'])||0,h=tField(x,['height','block'])||0;
+    return amt? {h, p: paid/amt}:null;}).filter(Boolean);
+  if(pts.length<1){$('chart').innerHTML='<div class="empty" style="padding:60px 0">no on-chain fills yet</div>';return;}
+  const W=420,H=170,pad=24;const ps=pts.slice(-40);
+  const xs=ps.map(p=>p.h),ys=ps.map(p=>p.p);
+  const xmin=Math.min(...xs),xmax=Math.max(...xs)||xmin+1,ymin=Math.min(...ys),ymax=Math.max(...ys)||ymin+1;
+  const X=v=>pad+(xmax===xmin?0.5:(v-xmin)/(xmax-xmin))*(W-2*pad);
+  const Y=v=>H-20-(ymax===ymin?0.5:(v-ymin)/(ymax-ymin))*(H-40);
+  const poly=ps.map(p=>X(p.h).toFixed(1)+','+Y(p.p).toFixed(1)).join(' ');
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="rune price from on-chain fills">`;
+  svg+=`<polyline points="${poly}" fill="none" stroke="#1fc7a8" stroke-width="1.6"/>`;
+  ps.forEach(p=>{svg+=`<circle cx="${X(p.h).toFixed(1)}" cy="${Y(p.p).toFixed(1)}" r="2" fill="#1fc7a8"/>`;});
+  svg+=`<text x="2" y="12" font-size="10" fill="#5d6675">${ymax.toFixed(2)}</text>`;
+  svg+=`<text x="2" y="${H-24}" font-size="10" fill="#5d6675">${ymin.toFixed(2)} sats/unit</text></svg>`;
+  $('chart').innerHTML=svg;note.textContent=`${pts.length} fills · price = sats paid per rune unit`;
+}
+
+function renderBottom(){
+  const b=$('bottomBody');
+  if(BOTTOM==='orders'){const o=LAST.orders;b.parentElement.querySelector('thead')?.remove();
+    b.innerHTML=o.length? o.map(r=>`<tr class="click" onclick='loadFill(${esc(JSON.stringify(r.artifact_hex||""))})'><td class="r">sell</td><td>${esc(r.rune_id||'—')}</td><td class="num">${(r.price||0).toLocaleString()}</td><td class="num">${fmt(r.amount)}</td><td class="num muted">${esc(short(r.offer_txid,10))}:${r.offer_vout}</td><td class="num">h${r.announce_height||'?'}</td></tr>`).join('') : '<tr><td class="empty">no open orders</td></tr>';
+  }else if(BOTTOM==='mempool'){const m=LAST.mempool;
+    b.innerHTML=m.length? m.map(r=>`<tr class="click" onclick='loadFill(${esc(JSON.stringify(r.artifact_hex||""))})'><td class="muted">pending</td><td>${esc(r.rune_id||'—')}</td><td class="num">${(r.price||0).toLocaleString()}</td><td class="num">${fmt(r.amount)}</td><td class="num muted">${esc(short(r.offer_txid,10))}:${r.offer_vout}</td></tr>`).join('') : '<tr><td class="empty">no pending orders in mempool</td></tr>';
+  }else if(BOTTOM==='trades'){const t=LAST.trades;
+    b.innerHTML=t.length? t.map(r=>{const tx=tField(r,['tx','txid'])||'';const rune=tField(r,['rune','rune_id'])||'—';const amt=tField(r,['amount','amt'])||0;const paid=tField(r,['paid','paid_sats','price'])||0;const h=tField(r,['height','block']);return `<tr><td class="muted">${esc(short(tx,12))}</td><td>${esc(rune)}</td><td class="num">${fmt(amt)}</td><td class="num">${(paid).toLocaleString()} sats</td><td class="num">${confLabel(h)||('h'+(h||'?'))}</td></tr>`;}).join('') : '<tr><td class="empty">no on-chain trades in window</td></tr>';
+  }else{const w=LAST.wallet||[];
+    b.innerHTML=w.length? w.map(u=>`<tr><td>${short(u.txid,16)}:${u.vout}</td><td class="num">${Number(u.amount).toFixed(8)} BTC</td><td class="muted">P2WPKH</td></tr>`).join('') : '<tr><td class="empty">no spendable P2WPKH UTXOs</td></tr>';
+  }
+}
+
+async function createOrder(){const b=$('o_msg');hide(b);
+  const o=op($('o_utxo').value);if(!o){msg(b,'select an offer UTXO',false);return;}
+  const body={offer_txid:o.txid,offer_vout:o.vout,price_btc:Number($('o_price').value),carrier:$('o_carrier').value};
+  const rn=op($('o_rune').value);if(rn){body.rune_block=parseInt(rn.txid,10)||0;body.rune_tx=isNaN(rn.vout)?0:rn.vout;body.amount_units=Number($('o_amount').value)||0;}
+  msg(b,'maker-signing + publishing…',true);
+  try{const r=await jpost('/api/order/create',body);msg(b,'Published ('+r.carrier+'). announce txid:\n'+r.announce_txid,true);setTimeout(refreshBook,1500);setTimeout(refreshMempool,1500);}catch(e){msg(b,e.message,false);}
+}
+async function fillOrder(){const b=$('f_msg');hide(b);const art=$('f_art').value.trim();if(!art){msg(b,'load or paste an order artifact',false);return;}
+  msg(b,'building + broadcasting swap…',true);
+  try{const r=await jpost('/api/order/fill',{artifact_hex:art});msg(b,'Swap broadcast. txid:\n'+r.swap_txid,true);refreshWallet();setTimeout(refreshBook,1500);}catch(e){msg(b,e.message,false);}
+}
+async function etchRune(){const b=$('e_msg'),btn=$('e_btn');hide(b);btn.disabled=true;msg(b,'etching (commit + 6 + reveal, ~15s)…',true);
+  try{const r=await jpost('/api/rune/etch',{premine:Number($('e_amount').value)||1000});
+    const id=(r.rune_block!=null)?(r.rune_block+':'+r.rune_tx):'';
+    $('o_rune').value=id;$('o_amount').value=r.premine;$('o_utxo').value=r.offer_txid+':'+r.offer_vout;setPanel('publish');
+    msg(b,'Etched '+r.rune+(id?' (id '+id+')':'')+'. Offer selected — set a price and publish.',true);refreshWallet();
+  }catch(e){msg(b,e.message,false);}btn.disabled=false;
+}
+async function proposeSwap(){const b=$('a_msg');hide(b);const o=op($('a_offer').value);if(!o){msg(b,'offer as txid:vout',false);return;}
+  const body={offer_txid:o.txid,offer_vout:o.vout,price_sats:Number($('a_price').value),maker_addr:$('a_maker').value.trim()};
+  const rn=op($('a_rune').value);if(rn){body.rune_block=parseInt(rn.txid,10)||0;body.rune_tx=isNaN(rn.vout)?0:rn.vout;body.amount_units=Number($('a_amt').value)||0;}
+  msg(b,'building taker PSBT…',true);
+  try{const r=await jpost('/api/swap/propose',body);$('a_psbt').value=r.psbt||'';msg(b,'PSBT ready (taker_complete='+r.taker_complete+'). Hand to maker, or countersign below.',true);}catch(e){msg(b,e.message,false);}
+}
+async function countersignSwap(){const b=$('a_msg');hide(b);const o=op($('a_offer').value);if(!o){msg(b,'offer as txid:vout',false);return;}
+  const psbt=$('a_psbt').value.trim();if(!psbt){msg(b,'paste the taker PSBT',false);return;}
+  msg(b,'verifying + signing + broadcasting…',true);
+  try{const r=await jpost('/api/swap/countersign',{psbt,offer_txid:o.txid,offer_vout:o.vout,expect_price_sats:Number($('a_price').value),expect_maker_addr:$('a_maker').value.trim()});
+    msg(b,r.txid?('Swap broadcast. txid:\n'+r.txid):('complete='+r.complete+'\n'+(r.note||'')),!!r.txid||r.complete);refreshWallet();
+  }catch(e){msg(b,e.message,false);}
+}
+const rid=s=>{const p=(s||'').trim().split(':');return {block:parseInt(p[0],10)||0,tx:parseInt(p[1],10)||0};};
+function runeBody(){
+  const o=op($('r_offer').value); if(!o) return null;
+  const a=rid($('r_rune_a').value), bb=rid($('r_rune_b').value);
+  return {offer_txid:o.txid,offer_vout:o.vout,
+          rune_a_block:a.block,rune_a_tx:a.tx,amount_a:Number($('r_amt_a').value)||0,
+          rune_b_block:bb.block,rune_b_tx:bb.tx,amount_b:Number($('r_amt_b').value)||0};
+}
+async function proposeRuneSwap(){const b=$('r_msg');hide(b);const body=runeBody();
+  if(!body){msg(b,'offer as txid:vout',false);return;}
+  body.maker_addr=$('r_maker').value.trim(); if(!body.maker_addr){msg(b,'maker receive address required',false);return;}
+  msg(b,'locating rune B + building taker PSBT…',true);
+  try{const r=await jpost('/api/swap/rune-propose',body);$('r_psbt').value=r.psbt||'';
+    msg(b,'PSBT ready (taker_complete='+r.taker_complete+'). Funding: '+((r.deal||{}).funding_outpoint||'?')+'. Countersign below.',true);
+  }catch(e){msg(b,e.message,false);}
+}
+async function countersignRuneSwap(){const b=$('r_msg');hide(b);const body=runeBody();
+  if(!body){msg(b,'offer as txid:vout',false);return;}
+  const psbt=$('r_psbt').value.trim(); if(!psbt){msg(b,'paste the taker PSBT',false);return;}
+  body.psbt=psbt; body.expect_maker_addr=$('r_maker').value.trim();
+  msg(b,'verifying rune B routing via ord + signing + broadcasting…',true);
+  try{const r=await jpost('/api/swap/rune-countersign',body);
+    msg(b,r.txid?('Rune↔rune swap broadcast. txid:\n'+r.txid):('complete='+r.complete+'\n'+(r.note||'')),!!r.txid||r.complete);refreshWallet();
+  }catch(e){msg(b,e.message,false);}
+}
+
+function tick(){refreshStatus();refreshWallet();refreshBook();refreshMempool();refreshTrades();followEventStream();}
+refreshConfig();tick();renderBottom();
+setInterval(refreshStatus,10000);setInterval(refreshBook,8000);setInterval(refreshTrades,12000);setInterval(refreshMempool,8000);setInterval(refreshWallet,15000);setInterval(followEventStream,8000);
+</script>
+</body>
+</html>

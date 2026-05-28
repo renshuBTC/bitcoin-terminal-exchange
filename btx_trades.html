@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — live on-chain Runes trades</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#f7931a; --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 22px 48px}
+  header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  h1{font-size:24px;margin:0 0 4px;font-weight:600}
+  h1 .tag{color:var(--accent)}
+  .sub{color:var(--muted);margin:0}
+  .ctrl{display:flex;gap:8px;align-items:center}
+  input{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 10px;font-size:13px;width:230px;font-family:var(--mono)}
+  button{background:var(--accent);color:#0d1117;border:0;border-radius:7px;padding:8px 14px;font-weight:600;cursor:pointer;font-size:13px}
+  button:hover{opacity:.9}
+  .status{color:var(--muted);margin:14px 0 10px;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-size:11px;font-weight:600}
+  td{font-size:13px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .rune{color:var(--accent);font-weight:600}
+  .empty{color:var(--muted);text-align:center;padding:38px 0}
+  footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
+  code{font-family:var(--mono);background:var(--panel);border:1px solid var(--border);padding:1px 5px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>BT<span class="tag">X</span> — live on-chain Runes trades</h1>
+      <p class="sub">Reconstructed from chain data by your own node — no relay, no marketplace API.</p>
+    </div>
+    <div class="ctrl">
+      <input id="api" value="http://127.0.0.1:3110" spellcheck="false">
+      <button onclick="load()">Refresh</button>
+    </div>
+  </header>
+
+  <div class="status" id="status">Loading…</div>
+
+  <table id="tbl" hidden>
+    <thead>
+      <tr>
+        <th>Tx</th><th>Height</th><th>Rune</th><th class="num">Amount</th>
+        <th class="num">Paid (BTC)</th><th>Seller</th><th>Buyer</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div class="empty" id="empty" hidden>
+    No Runes trades detected in the recent window.<br>
+    This feed shows real data only on a <b>mainnet-indexed</b> node (no runes trades exist on regtest/signet).
+  </div>
+
+  <footer>
+    A trade is detected when a transaction carries <b>both</b> a <code>SIGHASH_SINGLE|ANYONECANPAY</code>
+    pre-signed input <b>and</b> a runestone edict — the pattern Magic Eden / UniSat / OKX fills settle
+    with. <b>Heuristic:</b> detection + rune/amount are validated (incl. a real UniSat fill); buyer/seller
+    attribution assumes <code>output[input]</code> is the seller payout and is best-effort. Served by a
+    BTX-fork node over <code>/api/v1/btx/trades</code>.
+  </footer>
+</div>
+
+<script>
+function short(s, n){ return s.length > n ? s.slice(0, n) + '…' : s; }
+function sats2btc(s){ return (Number(s) / 1e8).toLocaleString(undefined,{minimumFractionDigits:8,maximumFractionDigits:8}); }
+
+async function load(){
+  const base = document.getElementById('api').value.replace(/\/+$/,'');
+  const status = document.getElementById('status');
+  const tbl = document.getElementById('tbl'), rows = document.getElementById('rows'), empty = document.getElementById('empty');
+  status.textContent = 'Loading…'; tbl.hidden = true; empty.hidden = true; rows.innerHTML = '';
+  let data;
+  try {
+    const r = await fetch(base + '/api/v1/btx/trades');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    data = await r.json();
+  } catch (e) {
+    status.textContent = 'Could not reach ' + base + '/api/v1/btx/trades — ' + e.message
+      + '. Point this at a running BTX-fork (brk-btx) node.';
+    return;
+  }
+  status.textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · ' + data.length
+    + ' trade leg(s) in the recent window · ' + base;
+  if (!data.length){ empty.hidden = false; return; }
+  for (const t of data){
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="mono"><a href="https://mempool.space/tx/${t.txid}" target="_blank" rel="noopener">${short(t.txid,12)}</a></td>`
+      + `<td class="num">${t.height.toLocaleString()}</td>`
+      + `<td class="rune mono">${t.rune_id}</td>`
+      + `<td class="num">${Number(t.amount).toLocaleString()}</td>`
+      + `<td class="num">${sats2btc(t.btc_paid_sats)}</td>`
+      + `<td class="mono" title="${t.seller_spk_hex}">${short(t.seller_spk_hex,14)}</td>`
+      + `<td class="mono" title="${t.buyer_spk_hex}">${short(t.buyer_spk_hex,14)}</td>`;
+    rows.appendChild(tr);
+  }
+  tbl.hidden = false;
+}
+load();
+</script>
+</body>
+</html>

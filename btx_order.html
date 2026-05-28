@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — order detail</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#f7931a; --green:#3fb950; --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px}
+  header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-size:18px;margin:0;font-weight:600}
+  h1 .tag{color:var(--accent)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .controls{margin-left:auto;display:flex;gap:8px;align-items:center}
+  input[type=text]{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 9px;font-family:var(--mono);font-size:12px;width:240px}
+  button{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  main{padding:18px 22px;max-width:900px}
+  .status{font-size:12px;color:var(--muted);margin-bottom:14px;min-height:16px}
+  .status.err{color:#f85149}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px 18px;margin-bottom:18px}
+  h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px}
+  table.kv{width:100%;border-collapse:collapse}
+  table.kv td{padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;vertical-align:top}
+  table.kv td:first-child{color:var(--muted);width:170px}
+  table.kv tr:last-child td{border-bottom:none}
+  .mono{font-family:var(--mono);font-size:12px;word-break:break-all}
+  pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:0 0 6px;white-space:pre-wrap;word-break:break-all}
+  .copy{cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:11px;border:none;background:none;padding:0}
+  .copy:hover{text-decoration:underline}
+  .note{color:var(--muted);font-size:12px;margin:4px 0 16px}
+  .empty{padding:28px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>BT<span class="tag">X</span> order</h1></div>
+  <div class="controls">
+    <a href="btx_book.html" id="backlink">← order book</a>
+    <input id="api" type="text" value="http://127.0.0.1:3110" title="brk_cli API base URL">
+    <button id="reload">Reload</button>
+  </div>
+</header>
+<main>
+  <div id="status" class="status">Loading…</div>
+  <div id="detail"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const qp = new URLSearchParams(location.search);
+const apiBase = () => $('#api').value.replace(/\/+$/,'');
+const fmtBTC = sats => (sats/1e8).toLocaleString(undefined,{maximumFractionDigits:8});
+const esc = s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+if(qp.get('api')) $('#api').value = qp.get('api');
+const wantOffer = qp.get('offer') || '';   // expected "txid:vout"
+
+function copyBtn(text,label){
+  const id='c'+Math.random().toString(36).slice(2);
+  setTimeout(()=>{const el=document.getElementById(id); if(el) el.onclick=()=>{navigator.clipboard.writeText(text);el.textContent='copied';setTimeout(()=>el.textContent=label,1200);};},0);
+  return `<button class="copy" id="${id}">${label}</button>`;
+}
+
+function render(o){
+  const op = `${o.offer_txid}:${o.offer_vout}`;
+  const base = apiBase();
+  const fillApi = `python3 btx.py swap build --from-api --api-base ${base} \\\n  --offer ${op} --offer-amount-btc <OFFER_UTXO_BTC> \\\n  --pay-txid <YOUR_FUNDING_TXID> --pay-vout <N> --pay-amount-btc <AMOUNT_GE_PRICE+FEE>`;
+  const fillWallet = `python3 btx_wallet.py taker-fill --bitcoin-cli bitcoin-cli \\\n  --datadir <YOUR_DATADIR> --wallet <YOUR_WALLET> \\\n  --artifact-hex ${o.artifact_hex} --broadcast`;
+  $('#detail').innerHTML = `
+    <div class="card">
+      <h2>Order terms (committed on-chain)</h2>
+      <table class="kv">
+        <tr><td>Offer outpoint</td><td class="mono">${esc(op)} ${copyBtn(op,'copy')}</td></tr>
+        <tr><td>Asset (rune)</td><td class="mono">${esc(o.rune_id)}</td></tr>
+        <tr><td>Amount offered</td><td>${o.amount.toLocaleString()} units</td></tr>
+        <tr><td>Price (payout)</td><td>${fmtBTC(o.price)} BTC</td></tr>
+        <tr><td>Group</td><td>${o.group_id||'standalone'}</td></tr>
+        <tr><td>Announced at height</td><td>${o.announce_height.toLocaleString()}</td></tr>
+        <tr><td>Expiry height</td><td>${o.expiry>=1e9?'none':o.expiry.toLocaleString()}</td></tr>
+        <tr><td>Artifact (maker pre-sig)</td><td class="mono">${esc(o.artifact_hex.slice(0,40))}… ${copyBtn(o.artifact_hex,'copy full hex')}</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h2>How to fill this order</h2>
+      <div class="note">The maker pre-signed output 0 with SIGHASH_SINGLE|ANYONECANPAY, so you must pay
+        exactly <b>${fmtBTC(o.price)} BTC</b> to their committed address — you cannot change it. You add your
+        own funding input + outputs and broadcast; the swap settles atomically in one transaction.</div>
+      <div class="note">With your own Bitcoin Core wallet (auto-discovers the offer + funding, transplants the maker witness):</div>
+      <pre>${esc(fillWallet)}</pre>${copyBtn(fillWallet,'copy command')}
+      <div class="note" style="margin-top:16px">Or build the swap from the served book (prototype taker key):</div>
+      <pre>${esc(fillApi)}</pre>${copyBtn(fillApi,'copy command')}
+    </div>`;
+}
+
+async function load(){
+  $('#status').className='status'; $('#status').textContent='Loading…';
+  if(!wantOffer){ $('#status').className='status err'; $('#status').textContent='No order specified. Open this page as btx_order.html?offer=<txid>:<vout>'; return; }
+  try{
+    const res = await fetch(apiBase()+'/api/v1/btx/orders');
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const orders = await res.json();
+    const o = orders.find(x=>`${x.offer_txid}:${x.offer_vout}`===wantOffer);
+    if(!o){ $('#detail').innerHTML='<div class="empty">Order '+esc(wantOffer)+' is not in the open book (it may be filled, cancelled, expired, or not yet indexed).</div>'; $('#status').textContent='Not found in open orders · '+apiBase(); return; }
+    render(o);
+    $('#status').textContent='Loaded '+new Date().toLocaleTimeString()+' · '+apiBase();
+  }catch(e){
+    $('#status').className='status err';
+    $('#status').textContent='Could not reach '+apiBase()+' — is brk_cli running? ('+e.message+')';
+    $('#detail').innerHTML='';
+  }
+}
+$('#reload').onclick=load;
+$('#api').addEventListener('keydown',e=>{if(e.key==='Enter')load();});
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — chain-reconstructed order book</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#f7931a; --green:#3fb950; --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px}
+  header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-size:18px;margin:0;font-weight:600}
+  h1 .tag{color:var(--accent)}
+  .sub{color:var(--muted);font-size:12px}
+  .controls{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  input[type=text]{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 9px;font-family:var(--mono);font-size:12px;width:260px}
+  button{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  label.auto{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:5px;cursor:pointer}
+  main{padding:18px 22px;max-width:1200px}
+  .status{font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px}
+  .status.err{color:#f85149}
+  .cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 16px;min-width:120px}
+  .card .n{font-size:22px;font-weight:600}
+  .card .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 8px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px}
+  th{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  td.mono,th.mono{font-family:var(--mono);font-size:12px}
+  .num{text-align:right;font-family:var(--mono)}
+  .empty{padding:28px;text-align:center;color:var(--muted)}
+  .pill{display:inline-block;background:rgba(63,185,80,.15);color:var(--green);border-radius:10px;padding:1px 8px;font-size:11px}
+  .copy{cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:11px;border:none;background:none;padding:0}
+  .copy:hover{text-decoration:underline}
+  footer{padding:16px 22px;color:var(--muted);font-size:11px;border-top:1px solid var(--border);max-width:1200px}
+  code{font-family:var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>BT<span class="tag">X</span> order book</h1>
+    <div class="sub">chain-reconstructed · no relay, no server-side state · served by your own node</div>
+  </div>
+  <div class="controls">
+    <a href="btx_create.html" style="color:var(--accent);text-decoration:none;font-size:13px">+ create order</a>
+    <input id="api" type="text" value="http://127.0.0.1:3110" title="brk_cli API base URL">
+    <button id="refresh">Refresh</button>
+    <label class="auto"><input id="autotgl" type="checkbox"> auto (15s)</label>
+  </div>
+</header>
+<main>
+  <div id="status" class="status">Loading…</div>
+  <div class="cards" id="cards"></div>
+  <h2>Open orders</h2>
+  <div id="orders"></div>
+  <h2>Order groups (partial-fill lots)</h2>
+  <div id="groups"></div>
+  <h2>Recent fills &amp; cancels</h2>
+  <div id="history"></div>
+  <h2>Recent atomic swaps (detected on-chain)</h2>
+  <div id="swaps"></div>
+</main>
+<footer>
+  Reads <code>/api/v1/btx/orders</code> and <code>/api/v1/btx/groups</code> from a running
+  <code>brk_cli</code> (BTX fork). Prices/amounts are as committed on-chain; <code>artifact_hex</code>
+  carries the maker's pre-signature so a taker can fill the order directly. This page holds no state.
+</footer>
+<script>
+const $ = s => document.querySelector(s);
+const apiBase = () => $('#api').value.replace(/\/+$/,'');
+const fmtBTC = sats => (sats/1e8).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:8});
+const esc = s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const shortid = h => h.length>16 ? h.slice(0,8)+'…'+h.slice(-6) : h;
+
+function copyBtn(text,label){
+  const id='c'+Math.random().toString(36).slice(2);
+  setTimeout(()=>{const el=document.getElementById(id); if(el) el.onclick=()=>{navigator.clipboard.writeText(text); el.textContent='copied';setTimeout(()=>el.textContent=label,1200);};},0);
+  return `<button class="copy" id="${id}">${label}</button>`;
+}
+
+function renderOrders(orders){
+  if(!orders.length){ $('#orders').innerHTML='<div class="empty">No open orders. Publish one on-chain and your node will reconstruct it here.</div>'; return; }
+  const rows = orders.map(o=>`<tr>
+    <td class="mono" title="${esc(o.offer_txid)}:${o.offer_vout}"><a href="btx_order.html?offer=${o.offer_txid}:${o.offer_vout}&api=${encodeURIComponent(apiBase())}" style="color:var(--accent);text-decoration:none">${esc(shortid(o.offer_txid))}:${o.offer_vout}</a></td>
+    <td class="mono">${esc(o.rune_id)}</td>
+    <td class="num">${esc(o.amount.toLocaleString())}</td>
+    <td class="num">${esc(fmtBTC(o.price))} <span style="color:var(--muted)">BTC</span></td>
+    <td class="num">${o.group_id||'<span style="color:var(--muted)">—</span>'}</td>
+    <td class="num">${o.announce_height.toLocaleString()}</td>
+    <td class="num">${o.expiry>=1e9?'<span style="color:var(--muted)">none</span>':o.expiry.toLocaleString()}</td>
+    <td>${copyBtn(o.artifact_hex,'copy artifact')}</td>
+  </tr>`).join('');
+  $('#orders').innerHTML = `<table><thead><tr>
+    <th class="mono">Offer (txid:vout)</th><th class="mono">Rune</th><th class="num">Amount</th>
+    <th class="num">Price</th><th class="num">Group</th><th class="num">Announced</th>
+    <th class="num">Expiry</th><th>Fill</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderGroups(groups){
+  if(!groups.length){ $('#groups').innerHTML='<div class="empty">No multi-lot groups.</div>'; return; }
+  const rows = groups.map(g=>`<tr>
+    <td class="num">${g.group_id}</td>
+    <td class="num">${g.total.toLocaleString()}</td>
+    <td class="num">${g.filled.toLocaleString()}</td>
+    <td class="num">${g.open.toLocaleString()}</td>
+    <td class="num">${g.lots}</td>
+    <td class="num">${g.total?Math.round(100*g.filled/g.total):0}% <span class="pill">filled</span></td>
+  </tr>`).join('');
+  $('#groups').innerHTML = `<table><thead><tr>
+    <th class="num">Group</th><th class="num">Total</th><th class="num">Filled</th>
+    <th class="num">Open</th><th class="num">Lots</th><th class="num">Progress</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderHistory(hist){
+  if(!hist.length){ $('#history').innerHTML='<div class="empty">No filled or cancelled orders yet.</div>'; return; }
+  const rows = hist.map(h=>{
+    const filled = h.status==='filled';
+    const color = filled?'var(--green)':'#f0997b';
+    const bg = filled?'rgba(63,185,80,.15)':'rgba(240,153,123,.15)';
+    return `<tr>
+      <td><span class="pill" style="color:${color};background:${bg}">${esc(h.status)}</span></td>
+      <td class="mono" title="${esc(h.offer_txid)}:${h.offer_vout}">${esc(shortid(h.offer_txid))}:${h.offer_vout}</td>
+      <td class="mono">${esc(h.rune_id)}</td>
+      <td class="num">${esc(h.amount.toLocaleString())}</td>
+      <td class="num">${esc(fmtBTC(h.price))} <span style="color:var(--muted)">BTC</span></td>
+      <td class="num">${h.last_event_height.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  $('#history').innerHTML = `<table><thead><tr>
+    <th>Status</th><th class="mono">Offer (txid:vout)</th><th class="mono">Rune</th>
+    <th class="num">Amount</th><th class="num">Price</th><th class="num">Resolved</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderSwaps(sw){
+  if(!sw.length){ $('#swaps').innerHTML='<div class="empty">No pre-signed swaps detected in the recent window.</div>'; return; }
+  const rows = sw.map(s=>`<tr>
+    <td class="mono" title="${esc(s.txid)}">${esc(shortid(s.txid))}</td>
+    <td class="num">${s.height.toLocaleString()}</td>
+    <td class="num">${s.presigned_inputs}</td>
+    <td>${s.has_runestone?'<span class="pill">rune</span>':'<span style="color:var(--muted)">—</span>'}</td>
+    <td class="num">${esc(fmtBTC(s.payout_sats))} <span style="color:var(--muted)">BTC</span></td>
+  </tr>`).join('');
+  $('#swaps').innerHTML = `<table><thead><tr>
+    <th class="mono">Txid</th><th class="num">Height</th><th class="num">Pre-signed ins</th>
+    <th>Asset</th><th class="num">Output 0</th></tr></thead><tbody>${rows}</tbody></table>
+    <div style="color:var(--muted);font-size:11px;margin-top:6px">Heuristic: flags SIGHASH_SINGLE|ANYONECANPAY inputs (the pre-signed-swap pattern) in the last ~50 blocks — may include non-trade uses.</div>`;
+}
+
+async function load(){
+  const base = apiBase();
+  $('#status').className='status'; $('#status').textContent='Loading from '+base+' …';
+  try{
+    const [oRes,gRes,hRes,sRes] = await Promise.all([
+      fetch(base+'/api/v1/btx/orders'),
+      fetch(base+'/api/v1/btx/groups').catch(()=>null),
+      fetch(base+'/api/v1/btx/history').catch(()=>null),
+      fetch(base+'/api/v1/btx/swaps').catch(()=>null)
+    ]);
+    if(!oRes.ok) throw new Error('orders: HTTP '+oRes.status);
+    const orders = await oRes.json();
+    const groups = gRes && gRes.ok ? await gRes.json() : [];
+    const hist = hRes && hRes.ok ? await hRes.json() : [];
+    const swaps = sRes && sRes.ok ? await sRes.json() : [];
+    const open = orders.length;
+    const totalAsset = orders.reduce((s,o)=>s+(o.amount||0),0);
+    $('#cards').innerHTML =
+      `<div class="card"><div class="n">${open}</div><div class="l">open orders</div></div>
+       <div class="card"><div class="n">${totalAsset.toLocaleString()}</div><div class="l">asset units offered</div></div>
+       <div class="card"><div class="n">${groups.length}</div><div class="l">lot groups</div></div>
+       <div class="card"><div class="n">${hist.length}</div><div class="l">recent fills/cancels</div></div>
+       <div class="card"><div class="n">${swaps.length}</div><div class="l">atomic swaps (~50 blk)</div></div>`;
+    renderOrders(orders);
+    renderGroups(groups);
+    renderHistory(hist);
+    renderSwaps(swaps);
+    $('#status').textContent='Updated '+new Date().toLocaleTimeString()+' · '+base;
+  }catch(e){
+    $('#status').className='status err';
+    $('#status').textContent='Could not reach '+base+' — is brk_cli running and serving? ('+e.message+')';
+    $('#cards').innerHTML=''; $('#orders').innerHTML=''; $('#groups').innerHTML=''; $('#history').innerHTML=''; $('#swaps').innerHTML='';
+  }
+}
+
+let timer=null;
+$('#refresh').onclick=load;
+$('#api').addEventListener('keydown',e=>{if(e.key==='Enter')load();});
+$('#autotgl').addEventListener('change',e=>{
+  clearInterval(timer);
+  if(e.target.checked){ timer=setInterval(load,15000); }
+});
+load();
+</script>
+</body>
+</html>

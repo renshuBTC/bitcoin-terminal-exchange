@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# Rust build artifacts (btx_verify_check standalone crate)
+target/
+
+# OS
+.DS_Store
+dist/
+ord-reference/
+etch_signet.json
+*-reference/
+etch_signet_addr.json

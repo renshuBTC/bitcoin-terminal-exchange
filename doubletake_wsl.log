@@ -1,0 +1,14 @@
+[1] start node
+  up after 2
+[2] fund maker offer(1.0) + taker1 pay(0.6) + taker2 pay(0.6)
+[3] both takers build a swap from the SAME offer UTXO (12917fe6d385b644c20d2df7be249855863cc3c69234808e8668a2d84b6cfbe2:1)
+[4] each swap is individually valid (tested against an empty mempool):
+   taker1: allowed= True
+   taker2: allowed= True
+[5] race: broadcast taker1, then taker2 (which now double-spends the offer UTXO)
+   taker1 broadcast OK: ede43966c9f559884acdf21c732d9f0aa8dc994381a11c0928908d7b000e76ac
+   taker2 broadcast: error code: -26
+[6] mine; exactly one confirms
+   taker1 (ede43966c9f559884acdf21c732d9f0aa8dc994381a11c0928908d7b000e76ac) confirmations: 1
+   offer UTXO: spent exactly once (race resolved)
+DONE_DOUBLETAKE
