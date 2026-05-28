@@ -18,14 +18,15 @@ set -u
 N="${1:-}"
 [ -z "$N" ] && { echo "usage: $0 <prompt_number>"; exit 2; }
 
-# ---- common config (override via env) ----
-export RT=${RT:-$HOME/btx-audit-p$N-rt}
-export BRKDIR=${BRKDIR:-$HOME/btx-audit-p$N-brk}
+# ---- common config (hard-set; ignore stale env to avoid leaking prior-session datadirs) ----
+unset RT BRKDIR   # explicit: prior shells may have RT set to a different audit's datadir
+export RT="$HOME/btx-audit-p$N-rt"
+export BRKDIR="$HOME/btx-audit-p$N-brk"
 export BTX_DIR=${BTX_DIR:-"/mnt/c/Users/Ren Shu/Documents/Claude/Projects/bitcoin-terminal-exchange"}
 export BRK_DIR=${BRK_DIR:-"/mnt/c/Users/Ren Shu/Documents/Claude/Projects/brk-btx"}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$HOME/brk-btx-target}
 export RPCPORT=${RPCPORT:-18443}
-export RESULT_JSON=${RESULT_JSON:-/tmp/btx-audit-p$N-result.json}
+export RESULT_JSON="/tmp/btx-audit-p$N-result.json"
 BITCOIND="${BITCOIND:-$HOME/bitcoin-29.1/bin/bitcoind}"
 BCLI_BIN="${BCLI_BIN:-$HOME/bitcoin-29.1/bin/bitcoin-cli}"
 BCLI="$BCLI_BIN -chain=regtest -datadir=$RT -rpcport=$RPCPORT"
@@ -48,8 +49,17 @@ bootstrap_stack() {
     say "Bootstrap: clean prior state at $RT / $BRKDIR"
     $BCLI stop >/dev/null 2>&1 || true
     sleep 2
+    # Kill any bitcoind for THIS datadir (defensive) AND any holder of our RPC port
+    # (leftover bitcoind from a prior audit session would otherwise block our bind).
     pkill -9 -f -- "-datadir=$RT" 2>/dev/null
     pkill -9 -f -- "release/brk " 2>/dev/null
+    # Find any process listening on $RPCPORT (TCP) and kill it
+    local PORT_PIDS=$(ss -tlnpH 2>/dev/null | awk -v p=":$RPCPORT" '$4 ~ p {print}' | grep -oP 'pid=\K\d+' | sort -u)
+    if [ -n "$PORT_PIDS" ]; then
+        warn "killing leftover process(es) holding port $RPCPORT: $PORT_PIDS"
+        for pid in $PORT_PIDS; do kill -9 "$pid" 2>/dev/null; done
+        sleep 2
+    fi
     rm -rf "$RT" "$BRKDIR"
     mkdir -p "$RT" "$BRKDIR"
 
@@ -57,8 +67,16 @@ bootstrap_stack() {
     "$BITCOIND" -chain=regtest -datadir="$RT" -rpcport=$RPCPORT \
         -fallbackfee=0.0002 -txindex=1 -datacarrier=1 -datacarriersize=240 \
         -server -daemon || die "bitcoind start"
-    for i in $(seq 1 30); do $BCLI getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
-    $BCLI createwallet btx >/dev/null || die "createwallet"
+    # Wait for cookie file to materialize AND for RPC to actually respond.
+    for i in $(seq 1 60); do
+        if [ -f "$RT/regtest/.cookie" ] && $BCLI getblockchaininfo >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    # Sanity: bitcoind must still be running at this point.
+    pgrep -f -- "-datadir=$RT" >/dev/null || die "bitcoind died after start; tail $RT/regtest/debug.log"
+    [ -f "$RT/regtest/.cookie" ] || die "RPC cookie never appeared at $RT/regtest/.cookie"
+    $BCLI getblockchaininfo >/dev/null 2>&1 || die "bitcoind alive but RPC unreachable"
+    $BCLI createwallet btx >/dev/null || die "createwallet failed (bitcoind appears alive)"
     MINER=$($BCLI getnewaddress "" bech32)
     $BCLI generatetoaddress 101 "$MINER" >/dev/null
     export MINER
@@ -199,9 +217,13 @@ if m:
             CARRIER_RESULTS+=("{\"carrier\":\"$C\",\"pass\":false,\"announce\":\"$ANNOUNCE\",\"fill\":\"$FILL_TXID\",\"orders_after_pub\":$N_OPEN_PUB,\"orders_after_fill\":$N_OPEN_FILL}")
         fi
     done
+    # Write each carrier-result JSON snippet to a temp file, then have python parse via json.loads.
+    local SNIPS=/tmp/btx-audit-p6-snippets.jsonl
+    : > "$SNIPS"
+    for s in "${CARRIER_RESULTS[@]}"; do echo "$s" >> "$SNIPS"; done
     python3 -c "
 import json
-r = [$(IFS=,; echo "${CARRIER_RESULTS[*]}")]
+r = [json.loads(line) for line in open('$SNIPS') if line.strip()]
 out = {'prompt': 6, 'pass': all(c['pass'] for c in r), 'carriers': r}
 open('$RESULT_JSON','w').write(json.dumps(out, indent=2))
 print(json.dumps(out, indent=2))
