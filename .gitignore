@@ -12,3 +12,7 @@ ord-reference/
 etch_signet.json
 *-reference/
 etch_signet_addr.json
+
+# Deterministic-from-seed adversarial corpus for the Python<->Rust book_hash xcheck
+# (regenerate any time via `python3 btx_book_hash_adversarial.py`)
+btx_adversarial_book_corpus.json
