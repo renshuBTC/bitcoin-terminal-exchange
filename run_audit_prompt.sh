@@ -378,17 +378,21 @@ prompt_10() {
     read OFFER_TXID OFFER_VOUT < <(fund_offer 1.0)
     local ART=$(maker_sign "$OFFER_TXID" "$OFFER_VOUT" 0.5 envelope)
     cd "$BTX_DIR"
-    # Build a reveal tx via btx_envelope_publish (state-file mode: produces hex without broadcast)
+    # Build commit + reveal but DO NOT broadcast the reveal (no --broadcast). The script always
+    # broadcasts the commit (it has to, to fund the reveal's input); we then mine the commit so its
+    # output is in the UTXO set, then testmempoolaccept the reveal hex against the strict-policy node.
     local PUB_JSON=$(python3 btx_envelope_publish.py publish --artifact-hex "$ART" \
         --bitcoin-cli "$BCLI_BIN" --chain regtest --datadir "$RT" --wallet btx \
-        --commit-amount-btc 0.0005 --fee-sats 2000 --broadcast 2>&1)
+        --commit-amount-btc 0.0005 --fee-sats 2000 2>&1)
     local REVEAL_HEX=$(echo "$PUB_JSON" | python3 -c "
 import sys, json, re
 buf = sys.stdin.read()
 m = re.search(r'\{.*\}', buf, re.S)
 print(json.loads(m.group(0))['reveal_hex'])
 ")
-    # Run testmempoolaccept on the REVEAL hex against the strict-policy node
+    # Mine the commit (so its P2TR output is in UTXO; the reveal needs that input available)
+    mine_blocks 1
+    # Now testmempoolaccept on the reveal — checks STRICTLY against default mempool policy
     local TMA_ENVELOPE=$($BCLI testmempoolaccept "[\"$REVEAL_HEX\"]")
     echo "$TMA_ENVELOPE" | python3 -m json.tool
     local ENV_ALLOWED=$(echo "$TMA_ENVELOPE" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['allowed'])")
@@ -440,6 +444,10 @@ print(json.dumps(out, indent=2))
     [ $PASS -eq 1 ] && grn "Prompt 10: PASS (envelope admitted, OP_RETURN policy boundary respected)" || red "Prompt 10: FAIL"
     echo "Result file: $RESULT_JSON"
 }
+
+# ============================================================
+# Dispatch
+# ============================================================
 
 # ============================================================
 # Dispatch
