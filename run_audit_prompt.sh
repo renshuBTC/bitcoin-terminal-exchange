@@ -390,9 +390,7 @@ buf = sys.stdin.read()
 m = re.search(r'\{.*\}', buf, re.S)
 print(json.loads(m.group(0))['reveal_hex'])
 ")
-    # Mine the commit (so its P2TR output is in UTXO; the reveal needs that input available)
     mine_blocks 1
-    # Now testmempoolaccept on the reveal — checks STRICTLY against default mempool policy
     local TMA_ENVELOPE=$($BCLI testmempoolaccept "[\"$REVEAL_HEX\"]")
     echo "$TMA_ENVELOPE" | python3 -m json.tool
     local ENV_ALLOWED=$(echo "$TMA_ENVELOPE" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['allowed'])")
@@ -446,19 +444,115 @@ print(json.dumps(out, indent=2))
 }
 
 # ============================================================
-# Dispatch
+# Prompt 11 — btxd security guards (Host / Origin / Method / CSRF)
 # ============================================================
+prompt_11() {
+    say "Prompt 11: btxd security guards exhaustive"
+    bootstrap_stack
+    cd "$BTX_DIR"
+    nohup python3 btxd.py --bitcoin-cli "$BCLI_BIN" --chain regtest --datadir "$RT" --wallet btx \
+        --host 127.0.0.1 --port 3333 --brk-url http://127.0.0.1:3119 \
+        > /tmp/btx-audit-p11-btxd.log 2>&1 &
+    BTXD_PID=$!
+    sleep 4
+    if ! kill -0 "$BTXD_PID" 2>/dev/null; then
+        red "btxd died on startup; log:"; tail -30 /tmp/btx-audit-p11-btxd.log
+        die "btxd start"
+    fi
+    grn "  btxd PID=$BTXD_PID on :3333"
+
+    probe() { curl -s -o /dev/null -w "%{http_code}" "$@"; }
+
+    say "Running 6 security probes"
+    local A=$(probe "http://127.0.0.1:3333/api/config")
+    echo "  A legitimate GET /api/config              = $A (expect 200)"
+    local B=$(probe -H "Host: evil.example" "http://127.0.0.1:3333/api/config")
+    echo "  B forged Host on /api/config              = $B (expect 403)"
+    local C=$(probe -H "Host: evil.example" "http://127.0.0.1:3333/api/v1/btx/orders")
+    echo "  C forged Host on /api/v1/btx/orders       = $C (expect 403)"
+    local D=$(probe -X POST -H "Origin: https://attacker.example" -H "Content-Type: application/json" \
+        --data '{}' "http://127.0.0.1:3333/api/order/create")
+    echo "  D forged Origin POST /api/order/create    = $D (expect 403)"
+    # btxd doc: absent Origin = non-browser CLI, ALLOWED through; body validator then catches '{}' -> 400.
+    # PASS = anything 4xx (200 would mean both CSRF guard AND body validator bypassed).
+    local E=$(probe -X POST -H "Content-Type: application/json" --data '{}' \
+        "http://127.0.0.1:3333/api/order/create")
+    echo "  E POST with no Origin                     = $E (expect 4xx)"
+    local F=$(probe "http://127.0.0.1:3333/api/this_does_not_exist")
+    echo "  F GET unknown path                        = $F (expect 404)"
+    local G_FOUND=$(grep -rnE "eval\(|new Function\(" "$BTX_DIR"/*.html 2>/dev/null | wc -l)
+    echo "  G eval/new-Function hits in served HTML   = $G_FOUND (expect 0)"
+
+    kill "$BTXD_PID" 2>/dev/null; wait "$BTXD_PID" 2>/dev/null
+
+    local PASS=1
+    [ "$A" = "200" ] || PASS=0
+    [ "$B" = "403" ] || PASS=0
+    [ "$C" = "403" ] || PASS=0
+    [ "$D" = "403" ] || PASS=0
+    case "$E" in 4*) ;; *) PASS=0 ;; esac
+    [ "$F" = "404" ] || PASS=0
+    [ "$G_FOUND" = "0" ] || PASS=0
+
+    python3 -c "
+import json
+out = {'prompt': 11, 'pass': $PASS == 1,
+       'A_get_config_legit': '$A',
+       'B_forged_host_config': '$B',
+       'C_forged_host_orders': '$C',
+       'D_forged_origin_post': '$D',
+       'E_no_origin_post': '$E',
+       'F_unknown_path': '$F',
+       'G_eval_hits_in_html': '$G_FOUND'}
+open('$RESULT_JSON','w').write(json.dumps(out, indent=2))
+print(json.dumps(out, indent=2))
+"
+    say "=== Prompt 11 Summary ==="
+    [ $PASS -eq 1 ] && grn "Prompt 11: PASS" || red "Prompt 11: FAIL"
+    echo "Result file: $RESULT_JSON"
+}
+
+# ============================================================
+# Prompt 12 — Light-client follower fold correctness
+# ============================================================
+prompt_12() {
+    say "Prompt 12: light-client follower fold correctness"
+    cd "$BTX_DIR"
+    say "Stage 1: btx_light_client.py --selftest (offline golden fold)"
+    local SELFTEST=1
+    if python3 btx_light_client.py --selftest 2>&1 | tee /tmp/btx-audit-p12-selftest.log | tail -20; then
+        grn "  PASS: selftest"
+    else
+        red "  FAIL: selftest"
+        SELFTEST=0
+    fi
+    say "Stage 2 (cross-impl event hash agreement): already verified by Prompts 1+3"
+    local PASS=$SELFTEST
+    python3 -c "
+import json
+out = {'prompt': 12, 'pass': $PASS == 1,
+       'stage1_selftest_pass': $SELFTEST == 1,
+       'stage2_note': 'Cross-impl agreement covered by Prompt 1 (Rust cumulative_event_hash_matches_python_golden + event_stream_matches_python_golden) and Prompt 3 baseline (btx_eventhash_test.py).'}
+open('$RESULT_JSON','w').write(json.dumps(out, indent=2))
+print(json.dumps(out, indent=2))
+"
+    say "=== Prompt 12 Summary ==="
+    [ $PASS -eq 1 ] && grn "Prompt 12: PASS (stage 1 selftest; stage 2 covered by prompts 1+3)" || red "Prompt 12: FAIL"
+    echo "Result file: $RESULT_JSON"
+}
 
 # ============================================================
 # Dispatch
 # ============================================================
 case "$N" in
     6)  prompt_6 ;;
-    7)  red "Prompt 7 (rune backing via ord oracle) not in runner yet — needs ord 0.27.1 orchestration. Run manually for now."; exit 2 ;;
+    7)  red "Prompt 7 (rune backing via ord oracle) not in runner yet â needs ord 0.27.1 orchestration. Run manually for now."; exit 2 ;;
     8)  prompt_8 ;;
     9)  prompt_9 ;;
     10) prompt_10 ;;
-    *)  red "Unknown / unsupported prompt: $N (supported: 6, 8, 9, 10)"; exit 2 ;;
+    11) prompt_11 ;;
+    12) prompt_12 ;;
+    *)  red "Unknown / unsupported prompt: $N (supported: 6, 8, 9, 10, 11, 12)"; exit 2 ;;
 esac
 
 cleanup
