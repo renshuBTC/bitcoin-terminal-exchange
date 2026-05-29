@@ -114,74 +114,126 @@ Once cloned, point me at `research/` and I'll do the line-level dive — especia
 
 ---
 
-## Forward-looking watchlist — detail (2026-05-27)
+## Forward-looking watchlist — detail (last refreshed 2026-05-29)
 
 Recommendations #1–#3 above are now shipped: the Merkle-committed book + membership proofs and the
 cumulative event hash (#1; see `BTX-book-commitment-design.md`), the Runes decoder cross-validation
 vs Magic Eden `runestone-lib` (#2; `btx_runes_xcheck.py`), and the dedicated thin-wallet blast-radius
 rail (#3; btxd `--max-hot-balance-btc`, `BTX-mainnet-hardening.md`). What remains is #5 — things
 that align with BTX's "light + trustless + Bitcoin-L1" thesis but are **not adoptable yet**, each with
-the concrete trigger that would move it from watch to build. Status below was web-verified on 2026-05-27;
-re-confirm before acting, as consensus-deployment timelines move.
+the concrete trigger that would move it from watch to build.
 
-### 1. CTV (BIP-119) + OP_VAULT (BIP-345) — covenant-enforced offers & vaulted hot wallet
+### 1. CTV (BIP-119) + OP_CHECKCONTRACTVERIFY (BIP-443) — covenant-enforced offers & vaulted hot wallet
 *What:* `OP_CHECKTEMPLATEVERIFY` commits a UTXO to be spendable only into a specific predetermined
-transaction template (version, locktime, in/out count, outputs, input position). `OP_VAULT` builds on CTV
-to enforce a withdrawal delay + clawback path on-chain.
-*Status (verified 2026-05-27):* CTV has, for the first time, concrete activation parameters on the table —
-a signaling start of **2026-03-30**, timeout 2027-03-30, minimum activation height ~May 2027, 90% miner
-threshold. It is described as the covenant proposal closest to activation but is **not yet locked in or
-active**. OP_VAULT depends on CTV.
+transaction template (version, locktime, in/out count, outputs, input position). `OP_VAULT` (BIP-345) was
+**withdrawn in May 2025** (bitcoin/bips PR #1848) and **superseded by BIP-443 OP_CHECKCONTRACTVERIFY
+(CCV)**, which gives a more general "spend transaction commits to a script/data" primitive that subsumes
+vault semantics. CCV is the doc to track for the vaulted-float use case from `BTX-mainnet-hardening.md`,
+not OP_VAULT.
+
+*Status (verified 2026-05-29):* CTV has concrete activation parameters on the table — signaling start
+**2026-03-30**, timeout 2027-03-30, minimum activation height ~May 2027, 90% miner threshold over a
+2016-block period. **As of late May 2026, signaling is 0/203 blocks (0.00%) in the current difficulty
+period 468** ([bip119monitor.com](https://bip119monitor.com/)). The activation client is third-party
+([delvingbitcoin.org/t/bip-119-ctv-activation-client/2242](https://delvingbitcoin.org/t/bip-119-ctv-activation-client/2242))
+— **not merged into Bitcoin Core master**. The Oct-2026 Bitcoin Core v30 release is dominated by an
+OP_RETURN datacarrier policy change (4MB / multi-OP_RETURN allowed), **not CTV**
+([theblock.co](https://www.theblock.co/post/357594/bitcoin-core-devs-merge-controversial-op_return-policy-change-into-planned-october-release)).
+A pro-activation open letter from 40+ devs is on the table
+([atlas21.com](https://atlas21.com/bitcoin-developers-call-for-implementation-of-ctv-and-csfs-letter-to-the-community/))
+but the on-chain reality is no signaling yet. **Still: covenant proposal closest to activation, but not
+locked in.**
+
 *Why BTX cares (two distinct wins):*
   (a) **Blast radius (audit item e).** This is the layer-3 "trustless" bound named in
-  `BTX-mainnet-hardening.md`: the trading float sits in an OP_VAULT, so a theft attempt becomes a
-  visible, revertible on-chain unvaulting instead of an instant drain — no trusted cosigner needed (unlike
-  the layer-2 2-of-2). It upgrades the thin-wallet/cosigner design *in place*.
+  `BTX-mainnet-hardening.md`: the trading float sits in a covenant-enforced wallet — under BIP-443 CCV
+  it's a contract that constrains where the float can go (withdrawal delay + clawback path), so a theft
+  attempt becomes a visible, revertible on-chain unvaulting instead of an instant drain. No trusted
+  cosigner needed (unlike the layer-2 2-of-2). It upgrades the thin-wallet/cosigner design *in place*.
   (b) **Anti-snipe offers.** A CTV-templated offer could commit the maker's payout structure into the
   spend template itself, narrowing the taker's degrees of freedom that the mempool-sniping attack exploits
-  — a possible on-chain hardening of the open-order mode (today's only snipe defense is opt-in addressed
-  swaps; cf. Light Pools in the comparison above).
-*Trigger:* CTV locks in (signaling succeeds) → prototype the vaulted-float wallet first (pure ops win, no
-protocol change), then evaluate a CTV-committed offer variant.
+  — though `BTX-frontrunning-threat-model.md` §7 establishes that *open + snipe-proof* is logically
+  impossible under any per-transaction Bitcoin predicate, so this would harden but not solve the problem.
+  The addressed-swap mode (already shipped) remains the actual snipe-proof escape for open orders.
+*Trigger:* CTV locks in (signaling succeeds) → prototype the vaulted-float wallet under BIP-443 CCV
+first (pure ops win, no protocol change to BTX), then evaluate a CTV-committed offer variant. Until
+signaling moves above 0%, this remains theoretical.
 
 ### 2. MuSig2 (BIP-327) / FROST — multi-party makers & the policy cosigner
 *What:* MuSig2 (standardized as **BIP-327**) aggregates an **n-of-n** set of signers into one key + one
 ordinary Schnorr signature. FROST (Flexible Round-Optimized Schnorr Threshold) is the **t-of-n** analogue:
 any t of n cooperators produce a single standard Schnorr signature, revealing nothing about the group
 on-chain, and tolerating offline members.
-*Status (verified 2026-05-27):* MuSig2 is finalized (BIP-327). FROST has progressed from paper to multiple
-production-grade implementations, with an IETF CFRG spec covering the secp256k1 ciphersuite (e.g.
-`BlockstreamResearch/bip-frost-dkg`, `bancaditalia/secp256k1-frost`) — maturing, not yet a single
-canonical Bitcoin standard.
+
+*Status (verified 2026-05-29):* MuSig2 is finalized (BIP-327), no recent errata or revisions. Adjacent
+tooling moved: **Bitcoin Core PR #34219** completed MuSig2 PSBT pubnonce / partial-sig validation, merged
+2026-03-04 for the Core 31.0 milestone
+([bitcoinindex.net](https://bitcoinindex.net/blog/bitcoin-core-s-musig2-psbt-validation-making-multisig-more-r/)).
+**BIP-390 v0.2.0** released 2026-03-04 enables `musig()` inside `sp()` (silent payments)
+([bips.dev/390](https://bips.dev/390/)).
+
+FROST has **firmer footing than the previous note implied**: **IETF RFC 9591** was published **June
+2024** and is the canonical FROST spec, with `FROST(secp256k1, SHA-256)` as a named ciphersuite
+([datatracker.ietf.org/doc/rfc9591](https://datatracker.ietf.org/doc/rfc9591/)) — not just a CFRG draft.
+Implementations active in 2026: `BlockstreamResearch/bip-frost-dkg`,
+`siv2r/bip-frost-signing` (v0.3.5, 2026-01-25) as a draft Bitcoin BIP on the mailing list, and Zcash
+Foundation's `frost-secp256k1-tr` (BIP-340/341 ciphersuite). **No canonical Bitcoin BIP yet** — the
+`bip-frost-signing` draft is the closest candidate.
+
 *Why BTX cares:*
   (a) **The layer-2 policy cosigner** (`BTX-mainnet-hardening.md` blast radius) is a 2-of-2; FROST/MuSig2
   make that a single-key-on-chain construction — the offer UTXO and fills look like ordinary Taproot
   key-path spends, so the cosigner adds no on-chain footprint and the maker keeps Taproot's privacy/fee
-  profile. The velocity/whitelist limit still lives in the cosigner's signing policy (no signature scheme
+  profile. The velocity/whitelist limit still lives in the cosigner's signing
+policy (no signature scheme
   encodes amount caps), exactly as documented.
   (b) **Multi-party makers.** A FROST t-of-n group could collectively maintain an offer (e.g. a small
   market-making desk) without any on-chain multisig script — still a single pre-signed
   `SIGHASH_SINGLE|ACP` artifact, just produced by a threshold group.
 *Trigger:* a concrete need for either a privacy-preserving cosigner or a multi-party maker. FROST tooling
-maturity (a stable secp256k1 ciphersuite + audited lib) is the gate; until then the 2-of-2 miniscript
-cosigner is the documented near-term path.
+maturity is now mostly there (RFC 9591 + multiple secp256k1 libs); the remaining gate is a single canonical
+Bitcoin BIP — `bip-frost-signing` clearing the BIP process or one of the lib authors shipping a stable
+mainnet-targeted release. Until then the 2-of-2 miniscript cosigner is the documented near-term path.
 
-### 3. ZeroSync — trustless light-client chain verification under the book
+### 3. ZeroSync (and adjacent succinct-Bitcoin work) — trustless light-client chain verification
 *What:* succinct (zk/STARK) proofs that the Bitcoin chain up to some state is valid, so a verifier
 confirms chain state without downloading/validating every block.
-*Status:* could not be confirmed in the 2026-05-27 search; treat as **research / proof-of-concept** until
-verified against the project directly.
+
+*Status (verified 2026-05-29):* ZeroSync is **still alive but its focus has shifted**. The project is
+largely subsumed into the **BitVM Alliance** (founded September 2024; ZeroSync co-founder Robin Linus is
+a principal). The most recent ZeroSync-specific milestone surfaced is **zkCoins PoC (March 2025)**. Robin
+Linus's group received the **Bitcoin Research Prize 2025**. No 2026 cadence on chain-state proofs has
+surfaced; the energy has moved to BitVM bridges / zkCoins / BitVM2
+([bitvm.org](https://bitvm.org/), [coindesk on BitVM2](https://www.coindesk.com/tech/2024/08/15/bitcoins-programmability-draws-closer-to-reality-as-robin-linus-delivers-bitvm2)).
+**Not paused, not superseded — refocused.** A chain-state proof for mainnet light clients (the BTX use
+case) is not on a published 2026 roadmap.
+
 *Why BTX cares:* BTX's verifiability story currently bottoms out at "run an honest indexer over a full
 node." The Merkle book root + cumulative event hash let a light client verify *a served order / the event
 stream* against a committed root — but the client still trusts that the root corresponds to the real
 chain. A ZeroSync-style chain proof would close that last gap: a phone could verify the chain, then verify
 the book root against it, end-to-end trustless — the full realization of the "light + trustless + L1"
 thesis. This is the most speculative item and the furthest out.
-*Trigger:* a usable proof artifact + verifier for mainnet chain state; then wire "verify chain proof →
-verify book root against it" into the terminal's client-side checks.
+*Trigger:* a usable proof artifact + verifier for mainnet chain state (from ZeroSync, BitVM, or a
+successor). Until then this is research, not roadmap.
+
+### Adjacent items surfaced 2026-05-29 (worth tracking even though not on the original watchlist)
+
+- **Bitcoin Core v30 (target October 2026) — OP_RETURN policy relaxation.** Default `-datacarrier`
+  policy moves from "single 80-byte OP_RETURN" to "multi-OP_RETURN allowed, up to 4MB combined" per the
+  merged PR. **What it means for BTX:** Prompt 10's pass criteria ("OP_RETURN 70B allowed, 100B rejected
+  under strict default policy") asserts behavior of Core **v29.1**, and that's still empirically true on
+  v29.1 nodes today. Once v30 is widely deployed, the 80-byte OP_RETURN boundary disappears as a
+  policy boundary in the network — BTX's envelope carrier remains the default and is unaffected, the
+  OP_RETURN carrier could legally carry the full 207-byte artifact in a single output, and the
+  Prompt-10-style strict-policy assertion becomes "envelope passes under strict default" (still true) plus
+  a note that the OP_RETURN policy boundary moved.
+- **MuSig2 PSBT validation in Core 31.0.** Direct relevance to BTX is low (we don't build maker sigs
+  through Core's PSBT flow), but if a future cosigner uses Core's wallet to manage MuSig2 partials, this
+  is the lib path.
 
 **Net:** none of these are near-term, and BTX needs no code now. The ordering when they mature is
-CTV-vault (ops-only, highest leverage on the open blast-radius residual) → FROST cosigner (privacy upgrade
-to the already-designed 2-of-2) → ZeroSync (the trustless-light-client end state). All three deepen the
-same thesis rather than adding off-chain dependencies, which keeps them consistent with BTX's
-nothing-offchain rule.
+CTV+CCV vault (ops-only, highest leverage on the open blast-radius residual) → FROST cosigner (privacy
+upgrade to the already-designed 2-of-2; tooling is closer than this doc previously implied) → ZeroSync /
+BitVM chain proofs (the trustless-light-client end state). All three deepen the same thesis rather than
+adding off-chain dependencies, which keeps them consistent with BTX's nothing-offchain rule.
