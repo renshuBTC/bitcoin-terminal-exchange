@@ -676,6 +676,165 @@ print(json.dumps(out, indent=2))
 }
 
 # ============================================================
+# Prompt 14 Ã¢ÂÂ Live public signet envelope propagation
+# ============================================================
+# Unlike the other prompts, this one does NOT bootstrap a fresh stack Ã¢ÂÂ it uses an existing
+# public-signet bitcoind + wallet (loaded at $SIGNET_DATADIR with wallet $SIGNET_WALLET). The point
+# is propagation across the real public-signet network: we broadcast from OUR node and observe the
+# tx land in mempool.space's signet view (a third-party node we don't control).
+prompt_14() {
+    say "Prompt 14: live public signet envelope propagation"
+    local SIGNET_DATADIR="${SIGNET_DATADIR:-$HOME/sig-public}"
+    local SIGNET_WALLET="${SIGNET_WALLET:-corex}"
+    local MEMPOOL_BASE="${MEMPOOL_BASE:-https://mempool.space/signet/api}"
+    local PRICE_BTC="${PRICE_BTC:-0.00005}"    # ~5000 sats committed payout (low, since signet)
+    local COMMIT_BTC="${COMMIT_BTC:-0.0002}"   # 20000 sats commit (default is 50000; we go lower to fit signet wallet)
+    local POLL_TIMEOUT_S="${POLL_TIMEOUT_S:-180}"
+    local POLL_INTERVAL_S="${POLL_INTERVAL_S:-5}"
+
+    local SBCLI="$BCLI_BIN -chain=signet -datadir=$SIGNET_DATADIR -rpcwallet=$SIGNET_WALLET"
+
+    # Sanity: signet bitcoind reachable + wallet loaded + not in IBD + has a P2WPKH UTXO
+    $SBCLI getblockchaininfo >/dev/null 2>&1 || die "signet bitcoind not reachable at $SIGNET_DATADIR"
+    local IBD=$($SBCLI getblockchaininfo | python3 -c "import sys,json;print(json.load(sys.stdin)['initialblockdownload'])")
+    [ "$IBD" = "False" ] || die "signet bitcoind still in IBD; wait for sync to finish"
+    local BAL=$($SBCLI getbalance)
+    echo "  signet balance: $BAL sBTC"
+    # Pick the largest P2WPKH UTXO for the maker-sign offer (we want > 5500 sats for committed payout + dust)
+    local UTXO_JSON=$($SBCLI listunspent 1 9999999 | python3 -c "
+import sys, json
+u = [x for x in json.load(sys.stdin) if x.get('desc','').startswith('wpkh(') and x.get('spendable')]
+if not u: sys.exit('no spendable P2WPKH UTXOs in signet wallet')
+# Pick the LARGEST one (gives the maker-sign room to commit a meaningful payout)
+u = [x for x in u if int(x['amount']*1e8) >= 6000]; u.sort(key=lambda x: x['amount'])  # smallest viable; leaves big UTXOs free for the commit funding
+print(json.dumps({'txid': u[0]['txid'], 'vout': u[0]['vout'], 'amount': u[0]['amount']}))
+")
+    local OFFER_TXID=$(echo "$UTXO_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['txid'])")
+    local OFFER_VOUT=$(echo "$UTXO_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['vout'])")
+    local OFFER_AMT=$(echo "$UTXO_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['amount'])")
+    echo "  offer = $OFFER_TXID:$OFFER_VOUT ($OFFER_AMT sBTC)"
+
+    # Maker-sign an envelope artifact for the offer. We DON'T use --require-rune-backing here Ã¢ÂÂ
+    # this prompt is testing PROPAGATION of the envelope carrier, not the rune-backing oracle.
+    cd "$BTX_DIR"
+    say "maker-sign envelope artifact (price $PRICE_BTC sBTC)"
+    local SIGN_JSON=$(python3 btx_wallet.py maker-sign         --bitcoin-cli "$BCLI_BIN" --chain signet --datadir "$SIGNET_DATADIR" --wallet "$SIGNET_WALLET"         --offer-txid "$OFFER_TXID" --offer-vout "$OFFER_VOUT" --price-btc "$PRICE_BTC"         --carrier envelope 2>&1)
+    local ART=$(echo "$SIGN_JSON" | python3 -c "
+import sys, json, re
+buf = sys.stdin.read()
+m = re.search(r'\{.*\}', buf, re.S)
+if not m: print(''); sys.exit()
+try:
+    d = json.loads(m.group(0))
+    print(d.get('artifact_hex', ''))
+except Exception:
+    print('')
+")
+    if [ -z "$ART" ] || [ "${ART:0:8}" != "42545831" ]; then
+        red "maker-sign did not produce a valid envelope artifact. Output:"
+        echo "$SIGN_JSON" | tail -10
+        die "maker-sign"
+    fi
+    echo "  artifact = $((${#ART}/2)) bytes, starts BTX1"
+
+    # Publish via envelope carrier on signet. --broadcast pushes the reveal to our signet bitcoind,
+    # which then gossips it to peers (95.217.106.33:28333 and 172.105.179.233:38333 per the probe).
+    say "publishing envelope on public signet (commit + reveal, --broadcast)"
+    local PUB_JSON=$(python3 btx_envelope_publish.py publish --artifact-hex "$ART"         --bitcoin-cli "$BCLI_BIN" --chain signet --datadir "$SIGNET_DATADIR" --wallet "$SIGNET_WALLET"         --commit-amount-btc "$COMMIT_BTC" --fee-sats 2000 --broadcast 2>&1)
+    echo "$PUB_JSON" | tail -10
+    local REVEAL_TXID=$(echo "$PUB_JSON" | python3 -c "
+import sys, json, re
+buf = sys.stdin.read()
+m = re.search(r'\{.*\}', buf, re.S)
+if not m: print(''); sys.exit()
+try:
+    d = json.loads(m.group(0))
+    print(d.get('reveal_txid', ''))
+except Exception:
+    print('')
+")
+    if [ -z "$REVEAL_TXID" ]; then
+        red "envelope publish produced no reveal_txid; full output:"; echo "$PUB_JSON"
+        die "envelope publish"
+    fi
+    local COMMIT_TXID=$(echo "$PUB_JSON" | python3 -c "
+import sys, json, re
+buf = sys.stdin.read()
+m = re.search(r'\{.*\}', buf, re.S)
+print(json.loads(m.group(0)).get('commit_txid','') if m else '')
+")
+    echo "  commit txid: $COMMIT_TXID"
+    echo "  reveal txid: $REVEAL_TXID"
+
+    # Sanity: confirm OUR node sees the reveal in its OWN mempool first
+    sleep 5
+    local LOCAL_SEES=$($SBCLI getrawmempool 2>/dev/null | python3 -c "
+import sys, json
+mp = json.load(sys.stdin)
+print('yes' if '$REVEAL_TXID' in mp else 'no')
+")
+    echo "  local mempool contains reveal: $LOCAL_SEES"
+    if [ "$LOCAL_SEES" != "yes" ]; then
+        warn "  reveal not in local mempool Ã¢ÂÂ it may have been mined already, or rejected"
+    fi
+
+    # The empirical propagation test: poll mempool.space (third-party signet node) for the reveal txid.
+    say "polling mempool.space/signet for the reveal txid (max ${POLL_TIMEOUT_S}s)"
+    local FOUND=0
+    local FOUND_AT=""
+    local START_T=$(date +%s)
+    for i in $(seq 1 $((POLL_TIMEOUT_S / POLL_INTERVAL_S))); do
+        sleep "$POLL_INTERVAL_S"
+        local HTTP=$(curl -s -o /tmp/btx-audit-p14-mempool.json -w "%{http_code}"             "$MEMPOOL_BASE/tx/$REVEAL_TXID" 2>/dev/null)
+        local ELAPSED=$(( $(date +%s) - START_T ))
+        if [ "$HTTP" = "200" ]; then
+            FOUND=1
+            FOUND_AT="$ELAPSED"
+            grn "  PASS at +${ELAPSED}s: mempool.space (third-party node) sees the reveal"
+            break
+        else
+            echo "  +${ELAPSED}s mempool.space HTTP=$HTTP (still polling)"
+        fi
+    done
+
+    if [ $FOUND -eq 1 ]; then
+        # Also confirm via the mempool.space response that it's the SAME tx (compare txid in body)
+        local M_TXID=$(python3 -c "
+import json
+try:
+    print(json.load(open('/tmp/btx-audit-p14-mempool.json')).get('txid',''))
+except Exception:
+    print('')
+")
+        if [ "$M_TXID" = "$REVEAL_TXID" ]; then
+            grn "  cross-check: mempool.space tx id matches"
+        else
+            warn "  cross-check mismatch: $M_TXID vs $REVEAL_TXID"
+        fi
+    fi
+
+    python3 -c "
+import json
+out = {'prompt': 14, 'pass': $FOUND == 1,
+       'commit_txid': '$COMMIT_TXID',
+       'reveal_txid': '$REVEAL_TXID',
+       'offer_outpoint': '$OFFER_TXID:$OFFER_VOUT',
+       'local_mempool_saw_reveal': '$LOCAL_SEES' == 'yes',
+       'mempool_space_observed': $FOUND == 1,
+       'mempool_space_observed_at_s': '$FOUND_AT',
+       'mempool_space_url': '$MEMPOOL_BASE/tx/$REVEAL_TXID'}
+open('$RESULT_JSON','w').write(json.dumps(out, indent=2))
+print(json.dumps(out, indent=2))
+"
+    say "=== Prompt 14 Summary ==="
+    [ $FOUND -eq 1 ] && grn "Prompt 14: PASS (envelope reveal propagated to third-party node)" || red "Prompt 14: FAIL"
+    echo "Result file: $RESULT_JSON"
+    echo "Inspect at: $MEMPOOL_BASE/tx/$REVEAL_TXID"
+    echo ""
+    echo "Note: did NOT call cleanup() Ã¢ÂÂ leaving signet bitcoind running for further inspection."
+}
+
+# ============================================================
 # Dispatch
 # ============================================================
 case "$N" in
@@ -686,7 +845,9 @@ case "$N" in
     10) prompt_10 ;;
     11) prompt_11 ;;
     12) prompt_12 ;;
-    *)  red "Unknown / unsupported prompt: $N (supported: 6, 7, 8, 9, 10, 11, 12)"; exit 2 ;;
+    14) prompt_14 ;;
+    *)  red "Unknown / unsupported prompt: $N (supported: 6, 7, 8, 9, 10, 11, 12, 14)"; exit 2 ;;
 esac
 
-cleanup
+# Don't cleanup() if Prompt 14 ran â we want to leave signet bitcoind up for inspection.
+[ "$N" = "14" ] || cleanup
