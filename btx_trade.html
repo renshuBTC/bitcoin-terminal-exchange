@@ -6,148 +6,257 @@
 <title>BTX — trade</title>
 <style>
   :root{
-    --bg:#0b0e11; --panel:#11151c; --panel2:#161b24; --line:#222a35; --line2:#2c3644;
-    --tx:#e7ebf2; --muted:#8b94a6; --dim:#5d6675;
-    --green:#1fc7a8; --greenbg:rgba(31,199,168,.12);
-    --red:#f6465d; --redbg:rgba(246,70,93,.12);
-    --accent:#f7931a; --info:#3b82f6; --infobg:rgba(59,130,246,.14);
+    /* Hyperliquid-leaning palette: very dark background, deep panel surfaces, bright teal accent. */
+    --bg:#070a0c; --panel:#0d1117; --panel2:#141a23; --panel3:#1a2230;
+    --line:#1c2530; --line2:#2a3543;
+    --tx:#e8eaed; --tx2:#cfd4dc; --muted:#8b94a6; --dim:#5f6878;
+    --green:#50d2c1; --green2:#3aaa9c; --greenbg:rgba(80,210,193,.12);
+    --red:#ed7088; --red2:#cc5773; --redbg:rgba(237,112,136,.10);
+    --amber:#e6b34a;
+    --accent:#97fce4; --accent2:#50d2c1; --accentbg:rgba(151,252,228,.10);
+    --info:#5598ff; --infobg:rgba(85,152,255,.10);
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  a{color:var(--info);text-decoration:none}
-  .mono{font-family:var(--mono)}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 var(--sans);overflow-x:hidden}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{color:var(--accent);text-decoration:underline}
+  .mono{font-family:var(--mono);font-feature-settings:"tnum" 1,"zero" 1}
   .g{color:var(--green)} .r{color:var(--red)} .muted{color:var(--muted)} .dim{color:var(--dim)}
-  header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
-  .logo{font-weight:700;font-size:16px;letter-spacing:.5px}.logo b{color:var(--accent)}
-  .stat{font-size:12px}.stat .l{color:var(--dim);margin-right:5px}
-  .pill{font-size:11px;border:1px solid var(--line2);border-radius:6px;padding:3px 8px;color:var(--muted)}
-  .pill.ok{color:var(--info);border-color:var(--info);background:var(--infobg)}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);display:inline-block;margin-right:5px}
-  .dot.up{background:var(--green)}
-  main{display:grid;grid-template-columns:1.6fr 0.95fr 1fr;gap:8px;padding:8px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-  .card h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-  /* order book */
-  .obhead,.obrow{display:grid;grid-template-columns:1fr 1fr 1fr;font-size:12px}
-  .obhead{color:var(--dim);font-size:11px;margin-bottom:4px}
-  .obrow{position:relative;padding:2px 0;cursor:pointer}
+
+  /* ===== TOP NAV ===== */
+  .nav{display:flex;align-items:center;gap:22px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+  .logo{font-weight:700;font-size:18px;letter-spacing:.2px;display:flex;align-items:baseline;gap:2px}
+  .logo b{color:var(--accent);font-style:italic}
+  .navlinks{display:flex;gap:18px;font-size:13px;color:var(--muted)}
+  .navlinks a{color:var(--muted)}.navlinks a.on{color:var(--tx)}
+  .navlinks a:hover{color:var(--tx);text-decoration:none}
+  .navright{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .navright .pill{font-size:11px;color:var(--muted);border:1px solid var(--line2);border-radius:6px;padding:4px 9px}
+  .navright .pill.ok{color:var(--green);border-color:var(--green2);background:var(--greenbg)}
+  .navright .pill.warn{color:var(--amber);border-color:#7c6a2c;background:rgba(230,179,74,.10)}
+  .navright .pill.bad{color:var(--red);border-color:var(--red2);background:var(--redbg)}
+  #connectBtn{background:var(--accent);color:#0b0e10;border:none;border-radius:6px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
+  #connectBtn:hover{background:var(--accent2)}
+
+  /* ===== STATS HEADER (Mark / Last / 24h / Vol / Book / Indexer) ===== */
+  .stats{display:flex;align-items:center;gap:28px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);overflow-x:auto}
+  .pairsel{display:flex;align-items:center;gap:10px;padding-right:22px;border-right:1px solid var(--line)}
+  .pairsel .sym{font-size:16px;font-weight:600;color:var(--tx);letter-spacing:.2px}
+  .pairsel .chip{font-size:10px;font-weight:600;color:var(--bg);background:var(--accent);padding:2px 7px;border-radius:4px;letter-spacing:.3px}
+  .metric{display:flex;flex-direction:column;gap:2px;min-width:max-content}
+  .metric .l{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+  .metric .v{font-size:13.5px;color:var(--tx);font-family:var(--mono);font-weight:500}
+  .metric .v.g{color:var(--green)} .metric .v.r{color:var(--red)}
+  .metric .v.small{font-size:12px}
+
+  /* ===== MAIN GRID: chart | book | trade panel ===== */
+  main{display:grid;grid-template-columns:minmax(420px,1.7fr) minmax(280px,0.85fr) minmax(320px,0.85fr);gap:1px;background:var(--line);min-height:calc(100vh - 140px - 220px)}
+  .card{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column}
+  .card h3{margin:0 0 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
+  .card h3 .sub{font-size:10px;color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0}
+
+  /* ===== CHART ===== */
+  #chart{flex:1;min-height:280px}
+  .chartmeta{font-size:11px;color:var(--dim);margin-top:6px}
+
+  /* ===== ORDER BOOK ===== */
+  .obhead{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;padding:0 2px 6px;border-bottom:1px solid var(--line)}
+  .obhead .num{text-align:right}
+  #asks,#bids{display:flex;flex-direction:column}
+  .obrow{position:relative;display:grid;grid-template-columns:18px 1fr 1fr 1fr;gap:6px;align-items:center;padding:3px 2px;font-family:var(--mono);font-size:12px;cursor:pointer}
   .obrow:hover{background:var(--panel2)}
-  .obrow .bar{position:absolute;right:0;top:0;bottom:0;border-radius:3px}
+  .obrow .bar{position:absolute;right:0;top:0;bottom:0;border-radius:2px;opacity:.5}
   .obrow span{position:relative;z-index:1}
-  .spread{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 0;margin:4px 0}
-  /* panel */
-  .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-  .tab{flex:1;min-width:60px;text-align:center;padding:6px 4px;font-size:12px;border:1px solid var(--line2);border-radius:6px;color:var(--muted);cursor:pointer;background:transparent}
-  .tab.on{color:var(--info);border-color:var(--info);background:var(--infobg)}
-  label{display:block;font-size:11px;color:var(--muted);margin:8px 0 3px}
-  input,select{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;color:var(--tx);padding:7px 8px;font:13px var(--mono)}
-  input:focus,select:focus{outline:none;border-color:var(--info)}
-  button.act{width:100%;margin-top:10px;padding:9px;border:1px solid var(--info);background:var(--infobg);color:#cfe0ff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
-  button.act:hover{background:rgba(59,130,246,.24)}
-  button.sec{background:transparent;border:1px solid var(--line2);color:var(--muted)}
-  .seg{display:flex;gap:6px}.seg button{flex:1}
-  .note{font-size:10.5px;color:var(--dim);line-height:1.5;margin-top:8px}
-  .msg{font-size:11.5px;margin-top:8px;white-space:pre-wrap;word-break:break-all;display:none}
-  .msg.show{display:block}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
-  /* bottom */
-  .bottom{margin:0 8px 10px}
-  .btabs{display:flex;gap:16px;padding:8px 12px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:var(--panel);font-size:12px}
-  .btabs span{color:var(--muted);cursor:pointer;padding-bottom:6px}
-  .btabs span.on{color:var(--tx);border-bottom:2px solid var(--info)}
-  table{width:100%;border-collapse:collapse;font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:0 0 8px 8px}
-  th{color:var(--dim);font-weight:500;text-align:left;padding:6px 12px;font-size:11px}
-  td{padding:6px 12px;border-top:1px solid var(--line);font-family:var(--mono)}
+  .obrow .num{text-align:right}
+  .obrow input.obchk{margin:0;accent-color:var(--accent2);transform:scale(.85)}
+  .spread{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 2px;margin:6px 0;font-family:var(--mono)}
+  .spread .lab{color:var(--dim);font-family:var(--sans);text-transform:uppercase;letter-spacing:.5px;font-size:10px}
+  #batchbar{align-items:center;justify-content:space-between;gap:8px;margin:8px 0;padding:8px 10px;background:var(--redbg);border:1px solid var(--red2);border-radius:5px;font-size:12px}
+
+  /* ===== TRADE PANEL ===== */
+  .panel-modes{display:flex;gap:6px;margin-bottom:12px}
+  .panel-modes .mode{flex:1;padding:7px 8px;font-size:11.5px;border:1px solid var(--line2);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;text-align:center;letter-spacing:.2px;font-family:var(--sans)}
+  .panel-modes .mode.on{color:var(--tx);border-color:var(--accent2);background:var(--accentbg)}
+  .tabs{display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .tab{flex:1;padding:7px 4px;font-size:12px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--sans);font-weight:500}
+  .tab.on{color:var(--tx);border-bottom-color:var(--accent)}
+  .tab:hover:not(.on){color:var(--tx2)}
+  .bs{display:flex;gap:0;margin-bottom:12px;border-radius:6px;overflow:hidden;background:var(--panel2)}
+  .bs button{flex:1;padding:9px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--sans);transition:background .1s}
+  .bs button.on.sell-rune{background:var(--green);color:var(--bg)}
+  .bs button.on.buy-rune{background:var(--red);color:var(--bg)}
+  label{display:block;font-size:10.5px;color:var(--dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:5px;color:var(--tx);padding:8px 10px;font:13px var(--mono)}
+  input::placeholder{color:var(--dim)}
+  input:focus,select:focus{outline:none;border-color:var(--accent2);background:var(--panel3)}
+  button.act{width:100%;margin-top:14px;padding:11px;border:none;background:var(--accent);color:var(--bg);border-radius:5px;cursor:pointer;font-size:13.5px;font-weight:600;font-family:var(--sans);transition:background .1s}
+  button.act:hover{background:var(--accent2)}
+  button.act:disabled{background:var(--line2);color:var(--dim);cursor:not-allowed}
+  button.act.sec{background:transparent;border:1px solid var(--accent2);color:var(--accent2)}
+  button.act.sec:hover{background:var(--accentbg)}
+  .seg{display:flex;gap:6px}.seg input{width:auto;flex:1}
+  .note{font-size:10.5px;color:var(--dim);line-height:1.55;margin-top:10px}
+  .msg{font-size:11.5px;margin-top:10px;white-space:pre-wrap;word-break:break-all;display:none;padding:8px 10px;border-radius:4px;font-family:var(--mono)}
+  .msg.show{display:block}
+  .msg.ok{color:var(--green);background:var(--greenbg);border:1px solid var(--green2)}
+  .msg.err{color:var(--red);background:var(--redbg);border:1px solid var(--red2)}
+
+  /* ===== TRADE-PANEL FOOTER STATS ===== */
+  .pstats{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;font-size:11.5px}
+  .pstats .row{display:flex;justify-content:space-between;gap:8px}
+  .pstats .l{color:var(--muted)}.pstats .v{color:var(--tx);font-family:var(--mono);text-align:right}
+
+  /* ===== BOTTOM TABLE ===== */
+  .bottom{border-top:1px solid var(--line);background:var(--panel);min-height:220px}
+  .btabs{display:flex;gap:0;padding:0 20px;border-bottom:1px solid var(--line);font-size:13px;align-items:center}
+  .btabs span{color:var(--muted);cursor:pointer;padding:12px 0;margin-right:24px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .btabs span.on{color:var(--tx);border-bottom-color:var(--accent)}
+  .btabs span:hover:not(.on){color:var(--tx2)}
+  .btabs .filter{margin-left:auto;color:var(--dim);font-size:11.5px}
+  table{width:100%;border-collapse:collapse;font-size:12px;background:var(--panel)}
+  th{color:var(--dim);font-weight:500;text-align:left;padding:8px 20px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line)}
+  td{padding:9px 20px;border-bottom:1px solid var(--line);font-family:var(--mono);color:var(--tx)}
   tr.click{cursor:pointer} tr.click:hover td{background:var(--panel2)}
-  .num{text-align:right}
-  .empty{color:var(--dim);text-align:center;padding:14px}
+  td.num{text-align:right}
+  td.empty,.empty{color:var(--dim);text-align:center;padding:24px;font-family:var(--sans)}
+
+  /* ===== STATUS BAR (very bottom) ===== */
+  .statusbar{display:flex;align-items:center;gap:18px;padding:8px 20px;border-top:1px solid var(--line);background:var(--panel);font-size:11px;color:var(--muted)}
+  .statusbar .live{display:flex;align-items:center;gap:6px;color:var(--green)}
+  .statusbar .live .dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 6px rgba(80,210,193,.6)}
+  .statusbar .live .dot.down{background:var(--red);box-shadow:0 0 6px rgba(237,112,136,.6)}
+  .statusbar .right{margin-left:auto;display:flex;gap:16px}
+  .statusbar .right a{color:var(--muted)}.statusbar .right a:hover{color:var(--tx)}
+
+  /* Hide a section visually without removing IDs / handlers — used by setPanel(). */
+  .hide{display:none !important}
 </style>
 </head>
 <body>
-<header>
-  <span class="logo">BT<b>X</b></span>
-  <span class="stat"><span class="dot" id="dot"></span><span id="chain">node</span> <span class="dim" id="height">–</span></span>
-  <span class="stat"><span class="l">pair</span><span id="pair">BTX•USD•TESTS / BTC</span></span>
-  <span class="stat"><span class="l">last</span><span class="mono" id="last">–</span> <span class="dim">sats</span></span>
-  <span class="stat"><span class="l">stream</span><span class="mono" id="streambadge" title="client-side event-stream follower — independently re-folds the cumulative commitment and detects reorg/omission across refreshes">–</span></span>
-  <span class="stat"><span class="l">24h vol</span><span class="mono" id="vol">–</span></span>
-  <span class="stat"><span class="l">wallet</span><span class="mono g" id="bal">–</span> <span class="dim">BTC</span></span>
-  <span class="pill" id="sync">sync –</span>
-  <span class="pill ok" style="margin-left:auto">spot · Bitcoin L1 · no leverage</span>
-  <span class="pill" id="oracle">oracle –</span>
-</header>
 
+<!-- ===== TOP NAV ===== -->
+<div class="nav">
+  <span class="logo">BT<b>X</b></span>
+  <div class="navlinks">
+    <a class="on" href="#">Trade</a>
+    <a href="/btx_book.html">Book</a>
+    <a href="/btx_trades.html">Trades</a>
+    <a href="/btx_create.html">Create</a>
+    <a href="https://github.com/renshuBTC" target="_blank" rel="noopener">Docs</a>
+  </div>
+  <div class="navright">
+    <span class="pill" id="oracle" title="rune oracle status — required for rune-backed offers">oracle –</span>
+    <span class="pill" id="sync" title="bitcoin node verification progress">sync –</span>
+    <button id="connectBtn" title="Wallet connection lives in your local Bitcoin Core via btxd">Connect</button>
+  </div>
+</div>
+
+<!-- ===== STATS HEADER (pair + 6 metrics) ===== -->
+<div class="stats">
+  <div class="pairsel">
+    <span class="sym" id="pair">BTX•USD•TESTS / BTC</span>
+    <span class="chip">spot · L1</span>
+  </div>
+  <div class="metric"><span class="l">Last</span><span class="v"><span id="last">–</span> <span class="dim" style="font-size:10px">sats</span></span></div>
+  <div class="metric"><span class="l">Indexer</span><span class="v small mono" id="chain">node</span></div>
+  <div class="metric"><span class="l">Height</span><span class="v small mono" id="height">–</span></div>
+  <div class="metric"><span class="l">24h Vol</span><span class="v small mono" id="vol">–</span></div>
+  <div class="metric"><span class="l">Wallet</span><span class="v small mono g"><span id="bal">–</span> <span class="dim" style="font-size:10px">BTC</span></span></div>
+  <div class="metric"><span class="l">Stream Hash</span><span class="v small mono" id="streambadge" title="client-side event-stream follower">–</span></div>
+  <!-- The legacy dot element is kept (referenced by JS) but visually folded into the live indicator below. -->
+  <span id="dot" style="display:none"></span>
+</div>
+
+<!-- ===== MAIN GRID ===== -->
 <main>
   <!-- CHART -->
   <div class="card">
-    <h3>Price — on-chain fills (block-paced)</h3>
-    <div id="chart" style="min-height:170px"></div>
-    <div class="note" id="chartnote">rune↔BTC price reconstructed from confirmed swaps. Sparse by nature — Bitcoin blocks, not ticks.</div>
+    <h3>Price — on-chain fills <span class="sub">block-paced</span></h3>
+    <div id="chart"></div>
+    <div class="chartmeta" id="chartnote">rune↔BTC price reconstructed from confirmed swaps. Sparse by nature — Bitcoin blocks, not ticks.</div>
   </div>
 
   <!-- ORDER BOOK -->
   <div class="card">
-    <h3 style="display:flex;justify-content:space-between;align-items:center">Order book <span id="bookhash" style="font-size:10px;color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0" title="content hash of the canonical book — any two indexers over the same chain match">book –</span></h3>
-    <div class="obhead"><span>Price (sats)</span><span class="num">Size</span><span class="num">Total</span></div>
+    <h3>Order Book <span class="sub" id="bookhash" title="content hash of the canonical book — any two indexers over the same chain match">book –</span></h3>
+    <div class="obhead">
+      <span>Price (sats)</span>
+      <span class="num">Size</span>
+      <span class="num">Total</span>
+    </div>
     <div id="asks"></div>
-    <div id="batchbar" style="display:none;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;padding:6px 8px;background:var(--redbg);border-radius:6px;font-size:12px">
+    <div id="batchbar" style="display:none">
       <span id="batchinfo" class="mono"></span>
-      <span style="display:flex;gap:6px">
-        <button class="tab" onclick="clearSel()">Clear</button>
-        <button class="act" style="width:auto;padding:4px 10px;margin:0" onclick="batchFill()">Batch fill</button>
+      <span style="display:flex;gap:8px">
+        <button class="tab" style="flex:0;padding:4px 12px;border:1px solid var(--line2);border-radius:4px;border-bottom-color:var(--line2);background:transparent" onclick="clearSel()">Clear</button>
+        <button class="act" style="width:auto;margin:0;padding:4px 12px;font-size:12px" onclick="batchFill()">Batch fill</button>
       </span>
     </div>
-    <div class="spread"><span>spread</span><span id="spread">–</span></div>
+    <div class="spread"><span class="lab">Spread</span><span id="spread">–</span></div>
     <div id="bids"></div>
-    <div class="note">BTX orders are one-sided pre-signed offers, so the book is sell-side unless buy-rune offers exist. Click a row to load one into Fill, or tick several asks and Batch fill them in a single transaction.</div>
+    <div class="note">BTX orders are one-sided pre-signed offers — sell-side unless buy-rune offers exist. Click a row to fill, or tick several asks for a batch tx.</div>
   </div>
 
-  <!-- ORDER PANEL -->
+  <!-- TRADE PANEL -->
   <div class="card">
+    <div class="panel-modes">
+      <button class="mode on" id="mode-open" onclick="setPanel('publish')">Open · 0x83</button>
+      <button class="mode" id="mode-addr" onclick="setPanel('otc')">Addressed · PSBT</button>
+      <button class="mode" id="mode-rune" onclick="setPanel('rune')">Rune↔Rune</button>
+    </div>
     <div class="tabs">
       <button class="tab on" data-p="publish" onclick="setPanel('publish')">Publish</button>
       <button class="tab" data-p="fill" onclick="setPanel('fill')">Fill</button>
       <button class="tab" data-p="etch" onclick="setPanel('etch')">Etch</button>
       <button class="tab" data-p="otc" onclick="setPanel('otc')">OTC</button>
-      <button class="tab" data-p="rune" onclick="setPanel('rune')">Rune↔Rune</button>
+      <button class="tab" data-p="rune" onclick="setPanel('rune')">R↔R</button>
     </div>
 
+    <!-- PUBLISH -->
     <div id="p-publish">
-      <div class="seg"><button class="sec" style="border-color:var(--green);color:var(--green)">Sell rune</button><button class="sec">Buy rune</button></div>
-      <label>Offer UTXO (your P2WPKH coin)</label>
+      <div class="bs">
+        <button class="on sell-rune">Sell rune</button>
+        <button class="buy-rune">Buy rune</button>
+      </div>
+      <label>Offer UTXO (P2WPKH coin)</label>
       <select id="o_utxo"><option value="">— refresh wallet —</option></select>
-      <label>Price (BTC the taker pays)</label>
+      <label>Price (BTC taker pays)</label>
       <input id="o_price" value="0.001">
-      <label>Counter-asset rune id (block:tx) — blank = BTC-only</label>
-      <input id="o_rune" placeholder="e.g. 131:1">
+      <label>Counter-asset rune id (block:tx)</label>
+      <input id="o_rune" placeholder="blank = BTC-only · e.g. 131:1">
       <label>Rune amount (base units)</label>
       <input id="o_amount" value="1000">
       <label>Carrier</label>
       <select id="o_carrier"><option value="op_return">OP_RETURN</option><option value="envelope">Taproot envelope</option></select>
       <button class="act" onclick="createOrder()">Maker-sign &amp; publish</button>
-      <div class="note"><i></i>self-custody · signs via your Bitcoin Core wallet · settles in one on-chain tx</div>
+      <div class="note">self-custody · signs via your Bitcoin Core wallet · settles on-chain</div>
       <div class="msg" id="o_msg"></div>
     </div>
 
+    <!-- FILL -->
     <div id="p-fill" style="display:none">
-      <label>Order artifact (click a book row, or paste)</label>
+      <label>Order artifact (click a book row to load)</label>
       <input id="f_art" placeholder="BTX1 artifact hex">
       <button class="act" onclick="fillOrder()">Fill — build &amp; broadcast swap</button>
-      <div class="note">taker funds + signs; the maker's pre-signature is dropped in; rune routes to your output.</div>
+      <div class="note">taker funds + signs; the maker's pre-sig is dropped in; rune routes to your output.</div>
       <div class="msg" id="f_msg"></div>
     </div>
 
+    <!-- ETCH -->
     <div id="p-etch" style="display:none">
       <label>Premine (base units)</label>
       <input id="e_amount" value="1000">
       <button class="act" id="e_btn" onclick="etchRune()">Etch a test rune (regtest)</button>
-      <div class="note">regtest-only — mines commit + 6 + reveal. On signet/mainnet, etch out-of-band (btx_etch etch-reveal).</div>
+      <div class="note">regtest-only — mines commit + 6 + reveal. On signet/mainnet, etch out-of-band via btx_etch.</div>
       <div class="msg" id="e_msg"></div>
     </div>
 
+    <!-- OTC ADDRESSED -->
     <div id="p-otc" style="display:none">
-      <label>Snipe-resistant addressed swap (BIP-174 PSBT, two parties)</label>
-      <div class="note" style="margin-top:0">Taker proposes → maker verifies output 0 &amp; countersigns SIGHASH_ALL. PSBT exchanged out-of-band; no relay.</div>
+      <div class="note" style="margin:0 0 8px">Snipe-resistant addressed swap (BIP-174 PSBT, 2 parties). Taker proposes → maker verifies output 0 &amp; countersigns SIGHASH_ALL. No relay.</div>
       <label>Offer UTXO (txid:vout)</label><input id="a_offer" placeholder="txid:vout">
       <label>Price (sats) · Maker addr</label>
       <div class="seg"><input id="a_price" value="10000"><input id="a_maker" placeholder="bcrt1…/tb1…"></div>
@@ -159,11 +268,11 @@
       <div class="msg" id="a_msg"></div>
     </div>
 
+    <!-- RUNE↔RUNE -->
     <div id="p-rune" style="display:none">
-      <label>Rune↔rune swap — sell rune A for rune B (addressed; needs ord)</label>
-      <div class="note" style="margin-top:0">The only trustless rune↔rune path: maker signs SIGHASH_ALL over the whole tx, so they verify (via ord) that output 0 receives the counter-rune before countersigning. Two parties, PSBT out-of-band.</div>
+      <div class="note" style="margin:0 0 8px">The only trustless rune↔rune path: maker signs SIGHASH_ALL over the whole tx, verifying via ord that output 0 receives the counter-rune before countersigning.</div>
       <label>Offer UTXO holding rune A (txid:vout)</label><input id="r_offer" placeholder="txid:vout">
-      <label>Rune A you SELL (block:tx) · amount (all of it)</label>
+      <label>Rune A you SELL (block:tx) · amount</label>
       <div class="seg"><input id="r_rune_a" placeholder="326:1"><input id="r_amt_a" value="5000"></div>
       <label>Rune B you RECEIVE (block:tx) · amount</label>
       <div class="seg"><input id="r_rune_b" placeholder="334:1"><input id="r_amt_b" value="2000"></div>
@@ -173,17 +282,40 @@
       <button class="act" onclick="countersignRuneSwap()">Maker: verify rune B, sign &amp; broadcast</button>
       <div class="msg" id="r_msg"></div>
     </div>
+
+    <!-- TRADE-PANEL FOOTER STATS (Hyperliquid-style)
+         These mirror the Hyperliquid 'Liq Price / Order Value / Margin / Slippage / Fees' grid,
+         re-purposed for BTX-on-Bitcoin semantics where the analog is "what does this order cost,
+         what does it commit, how can it fail". Static labels — dynamic wiring optional. -->
+    <div class="pstats">
+      <div class="row"><span class="l">Carrier</span><span class="v">OP_RETURN / envelope</span></div>
+      <div class="row"><span class="l">Custody</span><span class="v">self · no escrow</span></div>
+      <div class="row"><span class="l">Settlement</span><span class="v">on-chain · 1 tx</span></div>
+      <div class="row"><span class="l">Fee path</span><span class="v">no protocol fee</span></div>
+    </div>
   </div>
 </main>
 
+<!-- ===== BOTTOM TABLE ===== -->
 <div class="bottom">
   <div class="btabs">
-    <span class="on" data-b="orders" onclick="setBottom('orders')">Open orders</span>
+    <span class="on" data-b="orders" onclick="setBottom('orders')">Open Orders</span>
     <span data-b="mempool" onclick="setBottom('mempool')">Pending</span>
-    <span data-b="trades" onclick="setBottom('trades')">Trades</span>
-    <span data-b="wallet" onclick="setBottom('wallet')">Wallet</span>
+    <span data-b="trades" onclick="setBottom('trades')">Trade History</span>
+    <span data-b="wallet" onclick="setBottom('wallet')">Balances</span>
+    <span class="filter">Filter ▾</span>
   </div>
   <table><tbody id="bottomBody"><tr><td class="empty">loading…</td></tr></tbody></table>
+</div>
+
+<!-- ===== STATUS BAR ===== -->
+<div class="statusbar">
+  <span class="live"><span class="dot" id="liveDot"></span><span id="liveTxt">Connecting…</span></span>
+  <span class="right">
+    <a href="/btx_trades.html">Recent on-chain fills</a>
+    <a href="/index.html">Home</a>
+    <a href="https://github.com/renshuBTC/bitcoin-terminal-exchange" target="_blank" rel="noopener">Source</a>
+  </span>
 </div>
 
 <script>
@@ -483,6 +615,42 @@ async function countersignRuneSwap(){const b=$('r_msg');hide(b);const body=runeB
 function tick(){refreshStatus();refreshWallet();refreshBook();refreshMempool();refreshTrades();followEventStream();}
 refreshConfig();tick();renderBottom();
 setInterval(refreshStatus,10000);setInterval(refreshBook,8000);setInterval(refreshTrades,12000);setInterval(refreshMempool,8000);setInterval(refreshWallet,15000);setInterval(followEventStream,8000);
+</script>
+
+<script>
+// ---- Hyperliquid-skin adapter: tiny shim so the legacy refreshStatus() also drives the new live dot,
+//      and the panel-mode pill stays in sync with the inner tabs. No behavior change to the legacy JS.
+(function(){
+  const origRefreshStatus = window.refreshStatus;
+  window.refreshStatus = async function(){
+    await origRefreshStatus.apply(this, arguments);
+    const up = document.getElementById('dot').classList.contains('up');
+    const ld = document.getElementById('liveDot');
+    const lt = document.getElementById('liveTxt');
+    if(ld){ ld.classList.toggle('down', !up); }
+    if(lt){ lt.textContent = up ? ('Online · ' + (document.getElementById('chain').textContent||'node')) : 'Node offline'; }
+  };
+  const origSetPanel = window.setPanel;
+  window.setPanel = function(p){
+    origSetPanel(p);
+    const open = (p==='publish'||p==='fill'||p==='etch');
+    const addr = (p==='otc');
+    const rr   = (p==='rune');
+    const mo = document.getElementById('mode-open');
+    const ma = document.getElementById('mode-addr');
+    const mr = document.getElementById('mode-rune');
+    if(mo) mo.classList.toggle('on', open);
+    if(ma) ma.classList.toggle('on', addr);
+    if(mr) mr.classList.toggle('on', rr);
+  };
+  // Buy/Sell-rune toggle (visual only on publish — the form still works the same way the previous UI did)
+  document.querySelectorAll('#p-publish .bs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#p-publish .bs button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+    });
+  });
+})();
 </script>
 </body>
 </html>
