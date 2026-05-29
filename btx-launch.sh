@@ -10,8 +10,11 @@
 #   CHAIN=regtest bash btx-launch.sh
 #
 # Override any default by exporting it first (CHAIN, DATADIR, WALLET, BIN, BRK_DIR, BTX_DIR,
-# BRK_BLOCK_MAGIC, BRKPORT, BTXD_PORT). This is the launcher; turning it into a true single-file
-# OS installer is the remaining packaging work — see BTX-bundle-recipe.md.
+# BRK_BLOCK_MAGIC, BRKPORT, BTXD_PORT). Set BITCOIND_HOST (+ BITCOIND_PORT, BITCOIND_USER,
+# BITCOIND_PASS, BLOCKS_HOST_DATADIR) to skip starting a local bitcoind and reuse an existing
+# fully-synced node — useful for mainnet to avoid a fresh IBD. This is the launcher; turning
+# it into a true single-file OS installer is the remaining packaging work — see
+# BTX-bundle-recipe.md.
 set -u
 
 CHAIN=${CHAIN:-signet}
@@ -22,24 +25,55 @@ WALLET=${WALLET:-btx}
 BRKPORT=${BRKPORT:-3140}
 BTXD_PORT=${BTXD_PORT:-3333}
 
-# per-chain defaults
+# per-chain defaults. DATADIR_DEF is per-chain so CHAIN=main can't silently
+# inherit ~/sig-public — that was a bug pre-2026-05-29 (line 33 unconditionally
+# defaulted DATADIR to ~/sig-public before $CHAIN was consulted).
 case "$CHAIN" in
-  signet)  CFLAG=-signet;  RPCPORT=${RPCPORT:-38332}; SUBDIR=signet;   MAGIC_DEF=0a03cf40; ORDCHAIN=signet;;
-  regtest) CFLAG=-regtest; RPCPORT=${RPCPORT:-18443}; SUBDIR=regtest;  MAGIC_DEF=fabfb5da; ORDCHAIN=regtest;;
-  testnet) CFLAG=-testnet; RPCPORT=${RPCPORT:-18332}; SUBDIR=testnet3; MAGIC_DEF=0b110907; ORDCHAIN=testnet;;
-  main|mainnet) CFLAG=-chain=main; RPCPORT=${RPCPORT:-8332}; SUBDIR=.; MAGIC_DEF=f9beb4d9; ORDCHAIN=mainnet;;
+  signet)  CFLAG=-signet;  RPCPORT=${RPCPORT:-38332}; SUBDIR=signet;   MAGIC_DEF=0a03cf40; ORDCHAIN=signet;   DATADIR_DEF=$HOME/sig-public;;
+  regtest) CFLAG=-regtest; RPCPORT=${RPCPORT:-18443}; SUBDIR=regtest;  MAGIC_DEF=fabfb5da; ORDCHAIN=regtest;  DATADIR_DEF=$HOME/.bitcoin;;
+  testnet) CFLAG=-testnet; RPCPORT=${RPCPORT:-18332}; SUBDIR=testnet3; MAGIC_DEF=0b110907; ORDCHAIN=testnet;  DATADIR_DEF=$HOME/btc-testnet;;
+  main|mainnet) CFLAG=-chain=main; RPCPORT=${RPCPORT:-8332}; SUBDIR=.; MAGIC_DEF=f9beb4d9; ORDCHAIN=mainnet;  DATADIR_DEF=$HOME/btc-main;;
   *) echo "unknown CHAIN=$CHAIN"; exit 2;;
 esac
-DATADIR=${DATADIR:-$HOME/sig-public}
-[ "$CHAIN" = regtest ] && DATADIR=${DATADIR:-$HOME/.bitcoin}
+DATADIR=${DATADIR:-$DATADIR_DEF}
+
+# External-RPC mode: when BITCOIND_HOST is set, skip starting bitcoind locally
+# and point all clients (bitcoin-cli, brk_cli, ord) at the remote node. Lets
+# you reuse an existing fully-synced bitcoind (e.g. on the Windows side via
+# WSL bridge) without a fresh IBD into $DATADIR. $DATADIR is then just a thin
+# holder for ord's index + WSL-side state — no chain data lives there.
+BITCOIND_HOST=${BITCOIND_HOST:-}
+EXTERNAL_RPC=0
+CLIWRAP=""
+if [ -n "$BITCOIND_HOST" ]; then
+  EXTERNAL_RPC=1
+  BITCOIND_PORT=${BITCOIND_PORT:-$RPCPORT}
+  : "${BITCOIND_USER:?BITCOIND_HOST is set but BITCOIND_USER is missing}"
+  : "${BITCOIND_PASS:?BITCOIND_HOST is set but BITCOIND_PASS is missing}"
+  CLIWRAP="$HOME/.btx-cli-${CHAIN}-rpc.sh"
+fi
+
 BRK_BLOCK_MAGIC=${BRK_BLOCK_MAGIC:-$MAGIC_DEF}
-BLOCKSDIR="$DATADIR/$SUBDIR/blocks"; [ "$SUBDIR" = "." ] && BLOCKSDIR="$DATADIR/blocks"
-COOKIE="$DATADIR/$SUBDIR/.cookie"; [ "$SUBDIR" = "." ] && COOKIE="$DATADIR/.cookie"
+# Where bitcoind keeps blocks + cookie on disk (read directly by ord and brk_cli).
+# In external mode this is the *remote node's* datadir mounted on this machine
+# (e.g. /mnt/c/.../AppData/Roaming/Bitcoin for a Windows bitcoind reached via WSL).
+BLOCKS_HOST_DATADIR=${BLOCKS_HOST_DATADIR:-$DATADIR}
+BLOCKSDIR="$BLOCKS_HOST_DATADIR/$SUBDIR/blocks"; [ "$SUBDIR" = "." ] && BLOCKSDIR="$BLOCKS_HOST_DATADIR/blocks"
+COOKIE="$BLOCKS_HOST_DATADIR/$SUBDIR/.cookie";   [ "$SUBDIR" = "." ] && COOKIE="$BLOCKS_HOST_DATADIR/.cookie"
 BRKDIR=${BRKDIR:-$HOME/brk-btx-$CHAIN}
 ORDPORT=${ORDPORT:-3349}
 ORD=${ORD:-$(command -v ord 2>/dev/null || true)}   # rune oracle/indexer (optional; enables rune trades)
 ORDDIR=${ORDDIR:-$DATADIR/ord}
-CLI="$BIN/bitcoin-cli $CFLAG -datadir=$DATADIR"
+
+# bitcoin-cli command. In external mode we pass RPC creds inline so they
+# never persist to disk for our own use; btxd gets a per-session 700-perm
+# wrapper (created in section 3, wiped in stop_all) so it doesn't need to
+# learn about -rpcconnect/-rpcuser/etc.
+if [ "$EXTERNAL_RPC" = 1 ]; then
+  CLI="$BIN/bitcoin-cli $CFLAG -rpcconnect=$BITCOIND_HOST -rpcport=$BITCOIND_PORT -rpcuser=$BITCOIND_USER -rpcpassword=$BITCOIND_PASS"
+else
+  CLI="$BIN/bitcoin-cli $CFLAG -datadir=$DATADIR"
+fi
 
 say(){ printf '\033[36m== %s\033[0m\n' "$*"; }
 ok(){  printf '\033[32m%s\033[0m\n' "$*"; }
@@ -77,7 +111,11 @@ stop_all(){
   ok "  brk_cli stopped"
   free_port "$ORDPORT"; pkill -f "ord .*--http-port $ORDPORT" 2>/dev/null
   ok "  ord stopped"
-  if $CLI stop >/dev/null 2>&1; then
+  if [ "$EXTERNAL_RPC" = 1 ]; then
+    # Remote bitcoind is not ours to stop; just wipe the per-session CLI wrapper.
+    [ -n "$CLIWRAP" ] && [ -f "$CLIWRAP" ] && rm -f "$CLIWRAP" && ok "  cli-wrapper wiped"
+    ok "  bitcoind NOT touched (external RPC)"
+  elif $CLI stop >/dev/null 2>&1; then
     printf '  bitcoind stopping'
     for i in $(seq 1 30); do pgrep -x bitcoind >/dev/null || break; printf '.'; sleep 1; done
     echo; ok "  bitcoind stopped"
@@ -88,20 +126,30 @@ stop_all(){
 [ "${1:-}" = "stop" ] && stop_all
 
 # ---- 1. node ----------------------------------------------------------------
-say "node ($CHAIN, datadir $DATADIR)"
-if $CLI getblockcount >/dev/null 2>&1; then
-  ok "  already running (height $($CLI getblockcount))"
+if [ "$EXTERNAL_RPC" = 1 ]; then
+  say "node ($CHAIN @ $BITCOIND_HOST:$BITCOIND_PORT, EXTERNAL)"
+  if $CLI getblockcount >/dev/null 2>&1; then
+    ok "  reachable (height $($CLI getblockcount))"
+  else
+    err "  cannot reach $BITCOIND_HOST:$BITCOIND_PORT — check BITCOIND_USER/PASS + remote rpcallowip"
+    exit 1
+  fi
 else
-  mkdir -p "$DATADIR"
-  # a just-stopped bitcoind shuts down asynchronously and holds the datadir lock until it exits;
-  # wait for any lingering process to clear so we don't hit "Cannot obtain a lock on directory".
-  for i in $(seq 1 30); do pgrep -x bitcoind >/dev/null || break; sleep 1; done
-  "$BIN/bitcoind" $CFLAG -datadir="$DATADIR" -txindex=1 -datacarrier=1 -datacarriersize=240 \
-    -fallbackfee=0.0002 -dbcache=300 -server -daemon \
-    || { err "bitcoind failed to start"; exit 1; }
-  for i in $(seq 1 60); do $CLI getblockcount >/dev/null 2>&1 && break; sleep 1; done
-  $CLI getblockcount >/dev/null 2>&1 || { err "node RPC not ready"; exit 1; }
-  ok "  started (height $($CLI getblockcount))"
+  say "node ($CHAIN, datadir $DATADIR)"
+  if $CLI getblockcount >/dev/null 2>&1; then
+    ok "  already running (height $($CLI getblockcount))"
+  else
+    mkdir -p "$DATADIR"
+    # a just-stopped bitcoind shuts down asynchronously and holds the datadir lock until it exits;
+    # wait for any lingering process to clear so we don't hit "Cannot obtain a lock on directory".
+    for i in $(seq 1 30); do pgrep -x bitcoind >/dev/null || break; sleep 1; done
+    "$BIN/bitcoind" $CFLAG -datadir="$DATADIR" -txindex=1 -datacarrier=1 -datacarriersize=240 \
+      -fallbackfee=0.0002 -dbcache=300 -server -daemon \
+      || { err "bitcoind failed to start"; exit 1; }
+    for i in $(seq 1 60); do $CLI getblockcount >/dev/null 2>&1 && break; sleep 1; done
+    $CLI getblockcount >/dev/null 2>&1 || { err "node RPC not ready"; exit 1; }
+    ok "  started (height $($CLI getblockcount))"
+  fi
 fi
 
 # wallet: load it, create on first run
@@ -116,9 +164,13 @@ if curl -s "http://127.0.0.1:$BRKPORT/api/v1/btx/orders" >/dev/null 2>&1; then
   ok "  already serving"
 else
   mkdir -p "$BRKDIR"
+  if [ "$EXTERNAL_RPC" = 1 ]; then
+    BRK_AUTH="--rpcconnect $BITCOIND_HOST --rpcport $BITCOIND_PORT --rpcuser $BITCOIND_USER --rpcpassword $BITCOIND_PASS"
+  else
+    BRK_AUTH="--rpcconnect 127.0.0.1 --rpcport $RPCPORT --rpccookiefile $DATADIR/$SUBDIR/.cookie"
+  fi
   ( cd "$BRK_DIR" && BRK_BLOCK_MAGIC=$BRK_BLOCK_MAGIC nohup cargo run -p brk_cli -- \
-      --brkdir "$BRKDIR" --blocksdir "$BLOCKSDIR" \
-      --rpcconnect 127.0.0.1 --rpcport "$RPCPORT" --rpccookiefile "$DATADIR/$SUBDIR/.cookie" \
+      --brkdir "$BRKDIR" --blocksdir "$BLOCKSDIR" $BRK_AUTH \
       --brkport "$BRKPORT" >> "$HOME/btx-brk.log" 2>&1 & disown )
   echo "  starting (first run builds + indexes; tail ~/btx-brk.log). waiting up to 6 min…"
   for i in $(seq 1 120); do sleep 3; curl -s "http://127.0.0.1:$BRKPORT/api/v1/btx/orders" >/dev/null 2>&1 && break; done
@@ -129,7 +181,8 @@ fi
 # ---- 2.5 rune oracle (ord) --------------------------------------------------
 # Optional read-only ord --index-runes server: enables rune-backing validation + the GUI etch
 # button. ord needs the chain flag (else it assumes mainnet and looks for the cookie in the wrong
-# place) and the explicit cookie path bitcoind writes for this chain. Skipped cleanly if no ord.
+# place). Local mode uses cookie auth; external mode passes the bitcoin-rpc-{url,username,password}
+# triple and points --bitcoin-data-dir at the remote node's datadir so ord can read raw blocks.
 ORD_ARG=""
 if [ -n "$ORD" ] && [ -x "$ORD" ]; then
   say "rune oracle (ord :$ORDPORT, $($ORD --version 2>/dev/null || echo ord))"
@@ -137,8 +190,15 @@ if [ -n "$ORD" ] && [ -x "$ORD" ]; then
     ok "  already serving"
   else
     mkdir -p "$ORDDIR"
-    nohup "$ORD" --chain "$ORDCHAIN" --bitcoin-data-dir "$DATADIR" --cookie-file "$COOKIE" \
-      --data-dir "$ORDDIR" --index-runes server --http-port "$ORDPORT" >> "$HOME/btx-ord.log" 2>&1 & disown
+    if [ "$EXTERNAL_RPC" = 1 ]; then
+      nohup "$ORD" --chain "$ORDCHAIN" --bitcoin-data-dir "$BLOCKS_HOST_DATADIR" \
+        --bitcoin-rpc-url "http://$BITCOIND_HOST:$BITCOIND_PORT" \
+        --bitcoin-rpc-username "$BITCOIND_USER" --bitcoin-rpc-password "$BITCOIND_PASS" \
+        --data-dir "$ORDDIR" --index-runes server --http-port "$ORDPORT" >> "$HOME/btx-ord.log" 2>&1 & disown
+    else
+      nohup "$ORD" --chain "$ORDCHAIN" --bitcoin-data-dir "$DATADIR" --cookie-file "$COOKIE" \
+        --data-dir "$ORDDIR" --index-runes server --http-port "$ORDPORT" >> "$HOME/btx-ord.log" 2>&1 & disown
+    fi
     for i in $(seq 1 60); do sleep 1; curl -s "http://127.0.0.1:$ORDPORT/status" >/dev/null 2>&1 && break; done
   fi
   if curl -s "http://127.0.0.1:$ORDPORT/status" >/dev/null 2>&1; then
@@ -155,7 +215,20 @@ say "orchestrator + GUI (btxd :$BTXD_PORT)"
 if curl -s "http://127.0.0.1:$BTXD_PORT/api/config" >/dev/null 2>&1; then
   ok "  already running"
 else
-  ( cd "$BTX_DIR" && nohup python3 btxd.py --bitcoin-cli "$BIN/bitcoin-cli" --chain "$CHAIN" \
+  # In external mode, write a 700-perm per-session wrapper that injects the remote
+  # RPC creds, and hand THAT to btxd as --bitcoin-cli. btxd then never has to know
+  # about -rpcconnect/-rpcuser/etc. Wrapper is wiped in stop_all().
+  BTXD_CLI="$BIN/bitcoin-cli"
+  if [ "$EXTERNAL_RPC" = 1 ]; then
+    ( umask 077 && cat > "$CLIWRAP" <<EOF
+#!/bin/sh
+exec "$BIN/bitcoin-cli" $CFLAG -rpcconnect=$BITCOIND_HOST -rpcport=$BITCOIND_PORT -rpcuser='$BITCOIND_USER' -rpcpassword='$BITCOIND_PASS' "\$@"
+EOF
+    )
+    chmod 700 "$CLIWRAP"
+    BTXD_CLI="$CLIWRAP"
+  fi
+  ( cd "$BTX_DIR" && nohup python3 btxd.py --bitcoin-cli "$BTXD_CLI" --chain "$CHAIN" \
       --datadir "$DATADIR" --wallet "$WALLET" --brk-url "http://127.0.0.1:$BRKPORT" $ORD_ARG \
       --port "$BTXD_PORT" >> "$HOME/btx-btxd.log" 2>&1 & disown )
   for i in $(seq 1 20); do sleep 1; curl -s "http://127.0.0.1:$BTXD_PORT/api/config" >/dev/null 2>&1 && break; done
