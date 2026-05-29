@@ -604,6 +604,11 @@ def h_rune_countersign(body):
 
 # ----------------------------- HTTP plumbing -----------------------------
 _DEX_READS = {"orders", "groups", "history", "swaps", "trades", "mempool", "book-root", "event-hash", "event-stream"}
+# Upstream BRK (Bitcoin Research Kit) routes proxied under /api/brk/<name>. These are on-chain-derived
+# data — BTC mark price, recommended fees, mempool depth, difficulty epoch — surfaced in the trade
+# terminal so a maker/taker has the context BRK already computes locally from their bitcoin node.
+# Slash-containing names (e.g. "fees/recommended") are normalized below before lookup.
+_BRK_READS = {"prices", "fees/recommended", "fees/mempool-blocks", "fees/precise", "difficulty-adjustment", "blocks"}
 _CONTENT = {".html": "text/html", ".js": "application/javascript", ".css": "text/css",
             ".json": "application/json", ".svg": "image/svg+xml"}
 
@@ -716,6 +721,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(lambda: self._send(h_mining_info()))
         if p == "/api/mining/template":
             return self._guard(lambda: self._send(h_mining_template()))
+        if p.startswith("/api/brk/"):
+            name = p[len("/api/brk/"):]
+            if name in _BRK_READS:
+                return self._guard(lambda: self._send(brk_get(f"/api/v1/{name}") or {}))
+            return self._send({"error": "unknown brk read"}, 404)
         if p == "/api/dex/book":
             return self._guard(lambda: self._send(h_dex_book()))
         if p.startswith("/api/dex/"):

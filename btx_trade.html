@@ -335,6 +335,7 @@
     <span class="sym" id="pair">BTX•USD•TESTS / BTC</span>
     <span class="chip">spot · L1</span>
   </div>
+  <div class="metric"><span class="l">Mark</span><span class="v"><span class="dim" style="font-size:10px">$</span><span id="markprice">–</span></span></div>
   <div class="metric"><span class="l">Last</span><span class="v"><span id="last">–</span> <span class="dim" style="font-size:10px">sats</span></span></div>
   <div class="metric"><span class="l">Indexer</span><span class="v small mono" id="chain">node</span></div>
   <div class="metric"><span class="l">Height</span><span class="v small mono" id="height">–</span></div>
@@ -467,6 +468,8 @@
       <div class="row"><span class="l">Custody</span><span class="v">self · no escrow</span></div>
       <div class="row"><span class="l">Settlement</span><span class="v">on-chain · 1 tx</span></div>
       <div class="row"><span class="l">Fee path</span><span class="v">no protocol fee</span></div>
+      <div class="row"><span class="l">Net fee</span><span class="v"><span id="netfee">–</span> <span class="dim">sat/vB</span></span></div>
+      <div class="row"><span class="l">Mempool</span><span class="v"><span id="mempooldepth">–</span> <span class="dim">tx</span></span></div>
     </div>
   </div>
 </main>
@@ -793,6 +796,54 @@ setInterval(refreshStatus,10000);setInterval(refreshBook,8000);setInterval(refre
 </script>
 
 <script>
+// ---- BRK-upstream taps: BTC mark price + recommended network fee + mempool depth ----
+// brk_cli serves BRK-upstream routes alongside the /api/v1/btx/* family. btxd proxies a small
+// allowlist under /api/brk/<name> (the security guards still apply). These are best-effort:
+// if brk_cli isn't running, the cells fall back to "–" and nothing breaks. No throws.
+async function _brkget(p){
+  try{
+    const r = await fetch(p);
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }
+}
+async function refreshBrk(){
+  // BTC mark price from BRK's on-chain-derived /prices. The response shape may vary across BRK
+  // versions; try the common fields in order, then bail.
+  const px = await _brkget('/api/brk/prices');
+  if(px){
+    const usd = px.usd ?? px.USD ?? (px.btc && px.btc.usd) ?? (px.current && px.current.usd)
+                ?? (Array.isArray(px) && px.length && px[px.length-1].usd) ?? null;
+    if(usd!=null && typeof usd==='number'){
+      const mp = document.getElementById('markprice');
+      if(mp) mp.textContent = Math.round(usd).toLocaleString();
+    }
+  }
+  // Recommended fee (sat/vB) — fastest/halfHour/hour pattern (mempool.space-style) or a single number.
+  const f = await _brkget('/api/brk/fees/recommended');
+  if(f){
+    const fast = f.fastestFee ?? f.fastest ?? f.fast ?? f.high ?? (typeof f === 'number' ? f : null);
+    if(fast!=null){
+      const el = document.getElementById('netfee');
+      if(el) el.textContent = String(fast);
+    }
+  }
+  // Mempool depth (best-effort; some BRKs expose count via /fees/mempool-blocks or /api/v1/mempool).
+  const m = await _brkget('/api/brk/fees/mempool-blocks');
+  if(m){
+    const depth = Array.isArray(m) ? m.reduce((s,b)=>s+(b.nTx||b.txCount||b.n||0),0)
+                  : (m.count ?? m.size ?? null);
+    if(depth!=null){
+      const el = document.getElementById('mempooldepth');
+      if(el) el.textContent = Number(depth).toLocaleString();
+    }
+  }
+}
+// Wire into the existing tick loop — once now, then on a slow interval (price/fees move slowly enough
+// that 20s is plenty; mempool depth slightly faster but still tolerant).
+refreshBrk();
+setInterval(refreshBrk, 20000);
+
 // ---- Hyperliquid-skin adapter: tiny shim so the legacy refreshStatus() also drives the new live dot,
 //      and the panel-mode pill stays in sync with the inner tabs. No behavior change to the legacy JS.
 (function(){
