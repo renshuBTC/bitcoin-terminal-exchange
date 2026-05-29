@@ -834,8 +834,12 @@ async function refreshBrk(){
                 ?? (Array.isArray(px) && px.length && px[px.length-1].usd) ?? null;
     if(usd!=null && typeof usd==='number'){
       const mp = document.getElementById('markprice');
-      if(mp) mp.textContent = Math.round(usd).toLocaleString();
+      if(mp){ mp.textContent = Math.round(usd).toLocaleString(); mp.removeAttribute('title'); }
     }
+  } else {
+    // brk_cli reachable but no current price (e.g. "oracle prices not yet computed" on non-mainnet).
+    const mp = document.getElementById('markprice');
+    if(mp){ mp.title = 'BRK oracle prices not computed on this chain (signet/regtest have no real BTC/USD market). Switch to mainnet for live BTC price.'; }
   }
   // Recommended fee (sat/vB) — fastest/halfHour/hour pattern (mempool.space-style) or a single number.
   const f = await _brkget('/api/brk/fees/recommended');
@@ -879,11 +883,22 @@ function redrawChart(){
   else drawChart(LAST.trades||[]);
 }
 async function refreshBtcChart(){
-  // Defensive: silently no-op if brk_cli not serving. Tries the most likely series-name first;
-  // could be extended to a fallback list if the BRK build uses a different identifier.
+  // Defensive: silently no-op if brk_cli not serving. On a non-200 from a reachable brk_cli
+  // (e.g. wrong param name, no series ready yet), surface the message into the chart pane so
+  // the user can see what's wrong instead of staring at a blank box.
   try{
-    const r = await fetch('/api/brk/series/price_close/day1/data?last=90');
-    if(!r.ok) return;
+    const r = await fetch('/api/brk/series/price_close/day1/data?count=90');
+    if(!r.ok){
+      try{
+        const ej = await r.json();
+        const note = $('chartnote');
+        if(note && CHART_MODE==='btc'){
+          const msg = (ej.error && ej.error.message) || ej.detail || ej.error || ('HTTP '+r.status);
+          note.textContent = 'BRK price_close: '+String(msg).slice(0,180);
+        }
+      }catch(e2){}
+      return;
+    }
     const j = await r.json();
     // Accept several shapes: list of {date,value}, list of [date,value], list of plain numbers.
     let pts = [];
@@ -906,8 +921,18 @@ async function refreshBtcChart(){
 function drawBtcChart(pts){
   const el=$('chart'), note=$('chartnote');
   if(!pts || !pts.length){
-    el.innerHTML='<div class="empty" style="padding:60px 0">BTC price series unavailable — start brk_cli to populate.</div>';
-    if(note) note.textContent='BTC mark price chart shows /api/brk/series/price_close/day1/data — derived locally from on-chain data by brk_cli.';
+    // Be honest about WHY the chart is empty. The likely reason on a fresh stack on a non-mainnet
+    // chain is: BRK has the price_* series schema but no DATA, because BRK derives BTC/USD from
+    // mainnet exchange transactions. Signet/regtest have no real market so no derived price.
+    const chain = ($('chain') && $('chain').textContent || '').toLowerCase();
+    const mainnetish = chain.includes('main');
+    const msg = mainnetish
+      ? 'BTC price series not yet ready. brk_cli\'s price oracle still computing — chart will populate once it does.'
+      : 'BTC/USD requires mainnet. The connected chain (' + ($('chain').textContent || '?') + ') has no real BTC/USD market, so BRK has no derived price series for it. Point btx-launch at mainnet to populate this chart.';
+    el.innerHTML = '<div class="empty" style="padding:48px 28px;line-height:1.6">' + esc(msg) + '</div>';
+    if(note) note.textContent = mainnetish
+      ? '/api/brk/series/price_close/day1/data — derived locally from on-chain data by brk_cli'
+      : 'Switch to mainnet (CHAIN=main bash btx-launch.sh) for BTC/USD. Rune-side trading works on signet.';
     return;
   }
   const ps = pts.slice(-90);
