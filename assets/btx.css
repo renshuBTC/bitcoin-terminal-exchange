@@ -1,0 +1,148 @@
+/* ===================================================================
+   btx.css — shared Bitcoin Terminal design tokens for the BTX bundle.
+   Lifted from poc-indicators.html in the Bitcoin Terminal private repo:
+   pure-black background, Source Code Pro mono, #ff8c00 brand orange,
+   TradingView-minimal toolbar pattern.
+   Every BTX HTML page links this; page-specific overrides live in
+   each page's <style> block.
+   =================================================================== */
+
+/* Palette + typography */
+:root{
+  --bg:#000;
+  --fg:#d4d4d4;
+  --fg-bright:#fff;
+  --muted:#888;
+  --dim:#666;
+  --border:#2a2a2a;
+  --border-soft:#1f1f1f;
+  --hover:#1a1a1a;
+  --panel:#0d0d0d;
+  --menu:#111;
+  --line-strong:#555;
+  --orange:#ff8c00;
+  --orange-bright:#ffaa33;
+  --red:#f0616d;
+  --green:#26a69a;
+  --amber:#e6b34a;
+  --font-mono:'Source Code Pro', Consolas, Menlo, monospace;
+  --font-display:'Roboto Condensed', system-ui, sans-serif;
+}
+
+/* Reset */
+*{margin:0; padding:0; box-sizing:border-box}
+::selection{ background:var(--orange); color:#000 }
+html,body{ height:100% }
+html{ font-family:var(--font-mono) }
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:var(--font-mono); font-size:13px; line-height:1.45;
+  font-variant-numeric:tabular-nums;
+}
+
+/* Links */
+a{ color:var(--fg); text-decoration:none }
+a:hover{ color:var(--fg-bright); text-decoration:underline; text-underline-offset:2px; text-decoration-color:var(--orange) }
+
+/* Utility */
+.mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums }
+.display{ font-family:var(--font-display); font-weight:700; letter-spacing:.5px; text-transform:uppercase }
+.muted{ color:var(--muted) } .dim{ color:var(--dim) }
+.g{ color:var(--green) } .r{ color:var(--red) }
+.hide{ display:none !important }
+
+/* ===== TOP NAV (TradingView-style minimal toolbar) ===== */
+.bt-nav{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px; background:var(--bg);
+  border-bottom:1px solid var(--border); flex-wrap:wrap;
+  position:sticky; top:0; z-index:5;
+}
+.bt-logo{
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--font-display); font-weight:700; font-size:15px;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.8px;
+  padding:0 10px 0 2px;
+}
+.bt-logo::before{
+  content:""; display:inline-block; width:18px; height:18px;
+  background:var(--orange); border-radius:3px;
+  background-image:linear-gradient(135deg, var(--orange) 60%, var(--orange-bright) 100%);
+}
+.bt-logo b{ color:var(--orange); font-weight:700 }
+.bt-navlinks{ display:flex; gap:2px; margin-left:6px }
+.bt-navlinks a{
+  color:var(--fg); padding:6px 10px; font-size:12px;
+  border-radius:3px; text-transform:uppercase; letter-spacing:.5px;
+  text-decoration:none;
+  transition: background-color .08s ease, color .08s ease;
+}
+.bt-navlinks a:hover{ background:var(--hover); color:var(--fg-bright); text-decoration:none }
+.bt-navlinks a.on{ background:var(--hover); color:var(--fg-bright) }
+.bt-navright{ margin-left:auto; display:flex; align-items:center; gap:6px }
+.bt-pill{
+  display:inline-flex; align-items:center;
+  background:var(--hover); color:var(--fg); border:1px solid var(--line-strong);
+  border-radius:2px; height:28px; padding:0 10px;
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+  line-height:26px; box-sizing:border-box;
+}
+.bt-pill.ok  { color:var(--green); border-color:#2c5e57 }
+.bt-pill.warn{ color:var(--orange); border-color:#7a4b13 }
+.bt-pill.bad { color:var(--red);    border-color:#5e2e34 }
+.bt-btn-orange{
+  background:var(--orange); color:#000;
+  border:1px solid var(--orange); border-radius:2px;
+  height:28px; padding:0 16px;
+  font-family:var(--font-mono); font-size:12px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.6px;
+  line-height:26px; box-sizing:border-box; cursor:pointer;
+  transition:all .15s;
+}
+.bt-btn-orange:hover{ background:var(--orange-bright); border-color:var(--orange-bright) }
+
+/* ===== STATUS BAR (very bottom — TradingView-style) ===== */
+.bt-statusbar{
+  display:flex; align-items:center; gap:18px;
+  padding:5px 12px; background:var(--bg);
+  border-top:1px solid var(--border);
+  font-size:12px; color:var(--muted);
+}
+.bt-statusbar .live{ display:flex; align-items:center; gap:6px; color:var(--green) }
+.bt-statusbar .live .dot{ width:7px; height:7px; border-radius:50%; background:var(--green); display:inline-block }
+.bt-statusbar .live .dot.down{ background:var(--red) }
+.bt-statusbar .right{ margin-left:auto; display:flex; gap:14px }
+.bt-statusbar .right a{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px }
+.bt-statusbar .right a:hover{ color:var(--fg-bright); text-decoration:none }
+
+/* ===== COMMON FORM ELEMENTS ===== */
+.bt-label{ display:block; font-size:10px; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; letter-spacing:.6px }
+input,select,textarea{
+  width:100%; background:var(--bg); color:var(--fg);
+  border:1px solid var(--border); border-radius:2px;
+  padding:7px 9px; font-family:var(--font-mono); font-size:12px;
+}
+input::placeholder{ color:var(--dim) }
+input:focus,select:focus,textarea:focus{ outline:none; border-color:var(--orange) }
+
+/* Headings */
+h1,h2,h3,h4{ font-family:var(--font-display); font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--fg-bright) }
+h1{ font-size:18px; margin:0 0 6px }
+h2{ font-size:15px; margin:0 0 8px; color:var(--fg) }
+h3{ font-size:11px; color:var(--muted); margin:0 0 10px; font-family:var(--font-mono); letter-spacing:.7px }
+
+/* Code / pre */
+code,pre{ font-family:var(--font-mono); background:var(--hover); border:1px solid var(--border-soft); border-radius:2px; padding:1px 6px; font-size:12px }
+pre{ padding:10px 14px; overflow-x:auto; white-space:pre }
+
+/* Tables */
+table{ width:100%; border-collapse:collapse; font-size:12px; background:var(--bg) }
+th{
+  color:var(--muted); font-weight:500; text-align:left; padding:8px 12px;
+  font-size:10px; text-transform:uppercase; letter-spacing:.6px;
+  border-bottom:1px solid var(--border-soft); font-family:var(--font-mono);
+}
+td{ padding:9px 12px; border-bottom:1px solid var(--border-soft); font-family:var(--font-mono); color:var(--fg) }
+tr.click{ cursor:pointer } tr.click:hover td{ background:var(--hover) }
+td.num,th.num{ text-align:right }
+.empty,td.empty{ color:var(--dim); text-align:center; padding:24px }

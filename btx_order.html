@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BTX — order detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap">
+<link rel="stylesheet" href="assets/btx.css">
 <style>
-  :root{
-    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
-    --accent:#f7931a; --green:#3fb950; --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
-  }
+  /* palette + typography now live in assets/btx.css */
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px}
+  /* body styles inherit from assets/btx.css */
   header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   h1{font-size:18px;margin:0;font-weight:600}
   h1 .tag{color:var(--accent)}
@@ -38,6 +38,11 @@
 </style>
 </head>
 <body>
+<div class="bt-nav">
+  <span class="bt-logo">BT<b>X</b></span>
+  <div class="bt-navlinks"><a href="btx_trade.html">Trade</a><a href="btx_book.html" class="on">Book</a><a href="btx_trades.html">Trades</a><a href="btx_create.html">Create</a><a href="https://github.com/renshuBTC" target="_blank" rel="noopener">Docs</a></div>
+</div>
+
 <header>
   <div><h1>BT<span class="tag">X</span> order</h1></div>
   <div class="controls">
