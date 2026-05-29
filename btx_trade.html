@@ -5,134 +5,321 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BTX — trade</title>
 <style>
-  :root{
-    /* Hyperliquid-leaning palette: very dark background, deep panel surfaces, bright teal accent. */
-    --bg:#070a0c; --panel:#0d1117; --panel2:#141a23; --panel3:#1a2230;
-    --line:#1c2530; --line2:#2a3543;
-    --tx:#e8eaed; --tx2:#cfd4dc; --muted:#8b94a6; --dim:#5f6878;
-    --green:#50d2c1; --green2:#3aaa9c; --greenbg:rgba(80,210,193,.12);
-    --red:#ed7088; --red2:#cc5773; --redbg:rgba(237,112,136,.10);
-    --amber:#e6b34a;
-    --accent:#97fce4; --accent2:#50d2c1; --accentbg:rgba(151,252,228,.10);
-    --info:#5598ff; --infobg:rgba(85,152,255,.10);
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  /* ===== FONTS — borrowed verbatim from the BRK Bitcoin Terminal ===== */
+  @font-face{
+    font-family:Lilex;
+    src:url("assets/fonts/Lilex[wght]-v2_620.woff2") format("woff2");
+    font-style:normal; font-weight:100 700; font-display:swap;
   }
-  *{box-sizing:border-box}
+  @font-face{
+    font-family:Lilex;
+    src:url("assets/fonts/Lilex-Italic[wght]-v2_620.woff2.woff2") format("woff2");
+    font-style:italic; font-weight:100 700; font-display:swap;
+  }
+  @font-face{
+    font-family:Instrument;
+    src:url("assets/fonts/InstrumentSerif-Regular.woff2") format("woff2");
+    font-style:normal; font-display:swap;
+  }
+  @font-face{
+    font-family:Instrument;
+    src:url("assets/fonts/InstrumentSerif-Italic.woff2") format("woff2");
+    font-style:italic; font-display:swap;
+  }
+  @font-face{
+    font-family:Satoshi;
+    src:url("assets/fonts/Satoshi-Variable.woff2") format("woff2");
+    font-weight:100 900; font-display:swap;
+  }
+
+  /* ===== TOKENS — BRK Bitcoin Terminal palette (OKLCH, light-dark adaptive) ===== */
+  :root{
+    color-scheme: light dark;
+
+    --white:        oklch(95% 0 0);
+    --dark-white:   oklch(92.5% 0 0);
+    --light-gray:   oklch(90% 0 0);
+    --gray:         oklch(55% 0 0);
+    --dark-gray:    oklch(20% 0 0);
+    --light-black:  oklch(17.5% 0 0);
+    --black:        oklch(15% 0 0);
+
+    --red:    oklch(0.607 0.241 26.328);
+    --orange: oklch(67.64% 0.191 44.41);     /* BTC orange — primary brand */
+    --amber:  oklch(0.7175 0.1835 64.199);
+    --yellow: oklch(0.738 0.173 80.9405);
+    --lime:   oklch(0.708 0.2165 131.267);
+    --green:  oklch(0.675 0.2065 149.3965);
+    --emerald:oklch(0.646 0.1575 162.8525);
+    --teal:   oklch(0.652 0.129 183.6035);
+    --cyan:   oklch(0.662 0.1345 218.472);
+    --sky:    oklch(0.6365 0.1635 239.6445);
+    --blue:   oklch(0.5845 0.2295 261.348);
+
+    --background-color: light-dark(var(--white), var(--black));
+    --color:            light-dark(var(--black), var(--white));
+    --off-color:        var(--gray);
+    --border-color:     light-dark(var(--light-gray), var(--dark-gray));
+    --inv-border-color: light-dark(var(--dark-gray), var(--light-gray));
+    --off-border-color: light-dark(var(--dark-white), var(--light-black));
+    --panel-color:      light-dark(var(--dark-white), var(--light-black));
+    --panel-color-2:    light-dark(var(--light-gray), oklch(13% 0 0));
+
+    --accent: var(--orange);                  /* Bitcoin orange instead of Hyperliquid teal */
+    --good:   var(--green);
+    --bad:    var(--red);
+    --warn:   var(--amber);
+
+    --font-mono:
+      Lilex, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
+    --font-serif: Instrument, Charter, "Bitstream Charter", "Sitka Text", Cambria, serif;
+    --font-sans:  Satoshi, Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.8125rem;
+    --font-size-base: 0.875rem;
+    --font-size-lg: 1rem;
+    --font-size-xl: 1.125rem;
+    --font-size-2xl: 1.5rem;
+
+    --pad: 1rem;
+  }
+
+  /* ===== RESET-ish ===== */
+  *{box-sizing:border-box; border-width:0; border-color:var(--border-color); border-style:solid}
+  *::selection{ color: var(--white); background-color: var(--orange) }
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 var(--sans);overflow-x:hidden}
-  a{color:var(--accent2);text-decoration:none}
-  a:hover{color:var(--accent);text-decoration:underline}
-  .mono{font-family:var(--mono);font-feature-settings:"tnum" 1,"zero" 1}
-  .g{color:var(--green)} .r{color:var(--red)} .muted{color:var(--muted)} .dim{color:var(--dim)}
+  html{font-family: var(--font-mono)}   /* terminal-default mono, like BRK */
+  body{margin:0; background:var(--background-color); color:var(--color); font-size:var(--font-size-base); line-height:1.45; font-feature-settings:"tnum" 1, "zero" 1; overflow-x:hidden}
+
+  /* ===== LINKS — dotted underline, solid on hover (BRK style) ===== */
+  a{
+    color: inherit;
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--off-color);
+    text-underline-offset: 2px;
+  }
+  a:hover{ text-decoration-style: solid; text-decoration-color: inherit; color: var(--accent) }
+  a:visited{ font-style: italic }
+
+  /* ===== UTILITY ===== */
+  .mono{font-family: var(--font-mono); font-feature-settings:"tnum" 1,"zero" 1}
+  .serif{font-family: var(--font-serif)}
+  .sans{font-family: var(--font-sans)}
+  .g{color: var(--good)} .r{color: var(--bad)} .muted{color: var(--off-color)} .dim{color: var(--off-color); opacity:.7}
+  .small{font-size: var(--font-size-sm)}
+  .xs{font-size: var(--font-size-xs)}
 
   /* ===== TOP NAV ===== */
-  .nav{display:flex;align-items:center;gap:22px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
-  .logo{font-weight:700;font-size:18px;letter-spacing:.2px;display:flex;align-items:baseline;gap:2px}
-  .logo b{color:var(--accent);font-style:italic}
-  .navlinks{display:flex;gap:18px;font-size:13px;color:var(--muted)}
-  .navlinks a{color:var(--muted)}.navlinks a.on{color:var(--tx)}
-  .navlinks a:hover{color:var(--tx);text-decoration:none}
-  .navright{margin-left:auto;display:flex;align-items:center;gap:12px}
-  .navright .pill{font-size:11px;color:var(--muted);border:1px solid var(--line2);border-radius:6px;padding:4px 9px}
-  .navright .pill.ok{color:var(--green);border-color:var(--green2);background:var(--greenbg)}
-  .navright .pill.warn{color:var(--amber);border-color:#7c6a2c;background:rgba(230,179,74,.10)}
-  .navright .pill.bad{color:var(--red);border-color:var(--red2);background:var(--redbg)}
-  #connectBtn{background:var(--accent);color:#0b0e10;border:none;border-radius:6px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
-  #connectBtn:hover{background:var(--accent2)}
+  .nav{
+    display:flex; align-items:center; gap:24px; padding:14px 24px;
+    border-bottom-width:1px; background:var(--background-color); position:sticky; top:0; z-index:5;
+  }
+  .logo{
+    font-family: var(--font-serif);
+    font-size: var(--font-size-xl);
+    font-weight:400; letter-spacing:.5px; display:flex; align-items:baseline; gap:1px;
+  }
+  .logo b{ color: var(--accent); font-style: italic; font-weight: 400 }
+  .navlinks{
+    display:flex; gap:22px; font-size: var(--font-size-sm); text-transform: uppercase; letter-spacing:.6px;
+  }
+  .navlinks a{ color: var(--off-color); text-decoration:none; padding-bottom:2px; border-bottom: 1px solid transparent }
+  .navlinks a.on{ color: var(--color); border-bottom-color: var(--accent) }
+  .navlinks a:hover{ color: var(--color); text-decoration:none }
+  .navright{ margin-left:auto; display:flex; align-items:center; gap:14px }
+  .navright .pill{
+    font-size: var(--font-size-xs); color: var(--off-color);
+    border-width:1px; border-radius:4px; padding:4px 9px; text-transform:uppercase; letter-spacing:.5px;
+  }
+  .navright .pill.ok  { color: var(--good); border-color: var(--good); background: color-mix(in oklch, var(--good) 10%, transparent) }
+  .navright .pill.warn{ color: var(--warn); border-color: var(--warn); background: color-mix(in oklch, var(--warn) 10%, transparent) }
+  .navright .pill.bad { color: var(--bad);  border-color: var(--bad);  background: color-mix(in oklch, var(--bad)  10%, transparent) }
+  #connectBtn{
+    background: var(--accent); color: var(--white);
+    border-width:0; border-radius:4px; padding:7px 18px;
+    font-family: var(--font-mono); font-size: var(--font-size-sm); font-weight:600;
+    text-transform: uppercase; letter-spacing:.6px; cursor: pointer;
+  }
+  #connectBtn:hover{ background: color-mix(in oklch, var(--accent) 88%, var(--color)) }
 
-  /* ===== STATS HEADER (Mark / Last / 24h / Vol / Book / Indexer) ===== */
-  .stats{display:flex;align-items:center;gap:28px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);overflow-x:auto}
-  .pairsel{display:flex;align-items:center;gap:10px;padding-right:22px;border-right:1px solid var(--line)}
-  .pairsel .sym{font-size:16px;font-weight:600;color:var(--tx);letter-spacing:.2px}
-  .pairsel .chip{font-size:10px;font-weight:600;color:var(--bg);background:var(--accent);padding:2px 7px;border-radius:4px;letter-spacing:.3px}
-  .metric{display:flex;flex-direction:column;gap:2px;min-width:max-content}
-  .metric .l{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
-  .metric .v{font-size:13.5px;color:var(--tx);font-family:var(--mono);font-weight:500}
-  .metric .v.g{color:var(--green)} .metric .v.r{color:var(--red)}
-  .metric .v.small{font-size:12px}
+  /* ===== STATS HEADER ===== */
+  .stats{
+    display:flex; align-items:center; gap:32px; padding:16px 24px;
+    border-bottom-width:1px; background: var(--background-color); overflow-x:auto;
+  }
+  .pairsel{ display:flex; align-items:center; gap:12px; padding-right:24px; border-right-width:1px }
+  .pairsel .sym{
+    font-family: var(--font-serif); font-size: var(--font-size-xl); font-weight:400; color: var(--color); letter-spacing:.2px;
+  }
+  .pairsel .chip{
+    font-family: var(--font-mono); font-size: 10px; font-weight:600; color: var(--white);
+    background: var(--accent); padding:3px 8px; border-radius:3px; letter-spacing:.5px; text-transform:uppercase;
+  }
+  .metric{ display:flex; flex-direction:column; gap:3px; min-width:max-content }
+  .metric .l{ font-size: 10px; color: var(--off-color); text-transform: uppercase; letter-spacing:.7px; font-family: var(--font-sans) }
+  .metric .v{ font-size: var(--font-size-base); color: var(--color); font-family: var(--font-mono); font-weight:500 }
+  .metric .v.g{ color: var(--good) } .metric .v.r{ color: var(--bad) }
+  .metric .v.small{ font-size: var(--font-size-sm) }
 
-  /* ===== MAIN GRID: chart | book | trade panel ===== */
-  main{display:grid;grid-template-columns:minmax(420px,1.7fr) minmax(280px,0.85fr) minmax(320px,0.85fr);gap:1px;background:var(--line);min-height:calc(100vh - 140px - 220px)}
-  .card{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column}
-  .card h3{margin:0 0 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
-  .card h3 .sub{font-size:10px;color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0}
+  /* ===== MAIN GRID ===== */
+  main{
+    display:grid; grid-template-columns:minmax(420px,1.7fr) minmax(280px,0.85fr) minmax(320px,0.85fr); gap:1px;
+    background: var(--border-color); min-height: calc(100vh - 160px - 240px);
+  }
+  .card{ background: var(--background-color); padding: 16px 18px; display:flex; flex-direction:column }
+  .card h3{
+    margin:0 0 12px;
+    font-family: var(--font-sans); font-size: 11px; font-weight:600;
+    color: var(--off-color); text-transform: uppercase; letter-spacing:.7px;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .card h3 .sub{ font-size: 10px; color: var(--off-color); font-weight:400; text-transform:none; letter-spacing:0 }
 
   /* ===== CHART ===== */
-  #chart{flex:1;min-height:280px}
-  .chartmeta{font-size:11px;color:var(--dim);margin-top:6px}
+  #chart{ flex:1; min-height: 280px }
+  .chartmeta{ font-size: var(--font-size-xs); color: var(--off-color); margin-top:8px }
 
   /* ===== ORDER BOOK ===== */
-  .obhead{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;padding:0 2px 6px;border-bottom:1px solid var(--line)}
-  .obhead .num{text-align:right}
-  #asks,#bids{display:flex;flex-direction:column}
-  .obrow{position:relative;display:grid;grid-template-columns:18px 1fr 1fr 1fr;gap:6px;align-items:center;padding:3px 2px;font-family:var(--mono);font-size:12px;cursor:pointer}
-  .obrow:hover{background:var(--panel2)}
-  .obrow .bar{position:absolute;right:0;top:0;bottom:0;border-radius:2px;opacity:.5}
-  .obrow span{position:relative;z-index:1}
-  .obrow .num{text-align:right}
-  .obrow input.obchk{margin:0;accent-color:var(--accent2);transform:scale(.85)}
-  .spread{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 2px;margin:6px 0;font-family:var(--mono)}
-  .spread .lab{color:var(--dim);font-family:var(--sans);text-transform:uppercase;letter-spacing:.5px;font-size:10px}
-  #batchbar{align-items:center;justify-content:space-between;gap:8px;margin:8px 0;padding:8px 10px;background:var(--redbg);border:1px solid var(--red2);border-radius:5px;font-size:12px}
+  .obhead{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;
+    font-size: 10px; color: var(--off-color); text-transform: uppercase; letter-spacing:.6px;
+    padding: 0 2px 8px; border-bottom-width:1px; font-family: var(--font-sans);
+  }
+  .obhead .num{ text-align:right }
+  #asks,#bids{ display:flex; flex-direction:column }
+  .obrow{
+    position:relative; display:grid; grid-template-columns: 18px 1fr 1fr 1fr; gap:6px; align-items:center;
+    padding: 3px 2px; font-family: var(--font-mono); font-size: var(--font-size-sm); cursor:pointer;
+  }
+  .obrow:hover{ background: var(--panel-color) }
+  .obrow .bar{ position:absolute; right:0; top:0; bottom:0; border-radius:2px; opacity:.45 }
+  .obrow span{ position:relative; z-index:1 }
+  .obrow .num{ text-align:right }
+  .obrow input.obchk{ margin:0; accent-color: var(--accent); transform: scale(.85) }
+  .spread{
+    display:flex; justify-content:space-between; align-items:center; font-size: var(--font-size-xs);
+    color: var(--off-color); border-top-width:1px; border-bottom-width:1px; padding:7px 2px; margin:7px 0;
+    font-family: var(--font-mono);
+  }
+  .spread .lab{ color: var(--off-color); font-family: var(--font-sans); text-transform: uppercase; letter-spacing:.6px; font-size: 10px }
+  #batchbar{
+    align-items:center; justify-content:space-between; gap:8px; margin:8px 0; padding:8px 10px;
+    background: color-mix(in oklch, var(--bad) 10%, transparent);
+    border-width:1px; border-color: var(--bad); border-radius:4px;
+    font-size: var(--font-size-sm);
+  }
 
   /* ===== TRADE PANEL ===== */
-  .panel-modes{display:flex;gap:6px;margin-bottom:12px}
-  .panel-modes .mode{flex:1;padding:7px 8px;font-size:11.5px;border:1px solid var(--line2);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;text-align:center;letter-spacing:.2px;font-family:var(--sans)}
-  .panel-modes .mode.on{color:var(--tx);border-color:var(--accent2);background:var(--accentbg)}
-  .tabs{display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid var(--line)}
-  .tab{flex:1;padding:7px 4px;font-size:12px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--sans);font-weight:500}
-  .tab.on{color:var(--tx);border-bottom-color:var(--accent)}
-  .tab:hover:not(.on){color:var(--tx2)}
-  .bs{display:flex;gap:0;margin-bottom:12px;border-radius:6px;overflow:hidden;background:var(--panel2)}
-  .bs button{flex:1;padding:9px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--sans);transition:background .1s}
-  .bs button.on.sell-rune{background:var(--green);color:var(--bg)}
-  .bs button.on.buy-rune{background:var(--red);color:var(--bg)}
-  label{display:block;font-size:10.5px;color:var(--dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px}
-  input,select{width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:5px;color:var(--tx);padding:8px 10px;font:13px var(--mono)}
-  input::placeholder{color:var(--dim)}
-  input:focus,select:focus{outline:none;border-color:var(--accent2);background:var(--panel3)}
-  button.act{width:100%;margin-top:14px;padding:11px;border:none;background:var(--accent);color:var(--bg);border-radius:5px;cursor:pointer;font-size:13.5px;font-weight:600;font-family:var(--sans);transition:background .1s}
-  button.act:hover{background:var(--accent2)}
-  button.act:disabled{background:var(--line2);color:var(--dim);cursor:not-allowed}
-  button.act.sec{background:transparent;border:1px solid var(--accent2);color:var(--accent2)}
-  button.act.sec:hover{background:var(--accentbg)}
-  .seg{display:flex;gap:6px}.seg input{width:auto;flex:1}
-  .note{font-size:10.5px;color:var(--dim);line-height:1.55;margin-top:10px}
-  .msg{font-size:11.5px;margin-top:10px;white-space:pre-wrap;word-break:break-all;display:none;padding:8px 10px;border-radius:4px;font-family:var(--mono)}
-  .msg.show{display:block}
-  .msg.ok{color:var(--green);background:var(--greenbg);border:1px solid var(--green2)}
-  .msg.err{color:var(--red);background:var(--redbg);border:1px solid var(--red2)}
+  .panel-modes{ display:flex; gap:6px; margin-bottom:14px }
+  .panel-modes .mode{
+    flex:1; padding:8px 8px; font-family: var(--font-sans); font-size: 11px; font-weight:500;
+    border-width:1px; border-color: var(--border-color); border-radius:4px;
+    background: transparent; color: var(--off-color); cursor:pointer; text-align:center;
+    text-transform: uppercase; letter-spacing:.5px;
+  }
+  .panel-modes .mode.on{
+    color: var(--color); border-color: var(--accent);
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+  }
+  .tabs{ display:flex; gap:0; margin-bottom:16px; border-bottom-width:1px }
+  .tab{
+    flex:1; padding:8px 4px; font-family: var(--font-sans); font-size: var(--font-size-sm); font-weight:500;
+    border-width:0; border-bottom-width:2px; border-bottom-color: transparent;
+    background: transparent; color: var(--off-color); cursor:pointer;
+  }
+  .tab.on{ color: var(--color); border-bottom-color: var(--accent) }
+  .tab:hover:not(.on){ color: var(--color) }
+  .bs{ display:flex; gap:0; margin-bottom:14px; border-radius:5px; overflow:hidden; background: var(--panel-color) }
+  .bs button{
+    flex:1; padding:10px; font-family: var(--font-sans); font-size: var(--font-size-base); font-weight:600;
+    border-width:0; background: transparent; color: var(--off-color); cursor:pointer; transition: background .1s;
+    text-transform: uppercase; letter-spacing:.4px;
+  }
+  .bs button.on.sell-rune{ background: var(--good); color: var(--white) }
+  .bs button.on.buy-rune { background: var(--bad);  color: var(--white) }
+  label{
+    display:block; font-size: 10px; color: var(--off-color); margin: 11px 0 4px;
+    text-transform: uppercase; letter-spacing:.6px; font-family: var(--font-sans);
+  }
+  input,select{
+    width:100%; background: var(--background-color);
+    border-width:1px; border-color: var(--border-color); border-radius:4px;
+    color: var(--color); padding:8px 10px;
+    font-family: var(--font-mono); font-size: var(--font-size-sm);
+  }
+  input::placeholder{ color: var(--off-color); opacity:.6 }
+  input:focus,select:focus{ outline:none; border-color: var(--accent); background: var(--panel-color) }
+  button.act{
+    width:100%; margin-top:16px; padding:11px;
+    border-width:0; background: var(--accent); color: var(--white); border-radius:4px;
+    cursor:pointer; font-family: var(--font-mono); font-size: var(--font-size-base); font-weight:600;
+    text-transform: uppercase; letter-spacing:.6px;
+  }
+  button.act:hover{ background: color-mix(in oklch, var(--accent) 88%, var(--color)) }
+  button.act:disabled{ background: var(--border-color); color: var(--off-color); cursor: not-allowed }
+  button.act.sec{ background: transparent; border-width:1px; border-color: var(--accent); color: var(--accent) }
+  button.act.sec:hover{ background: color-mix(in oklch, var(--accent) 10%, transparent) }
+  .seg{ display:flex; gap:6px } .seg input{ width:auto; flex:1 }
+  .note{ font-size: var(--font-size-xs); color: var(--off-color); line-height:1.55; margin-top:11px; font-family: var(--font-sans) }
+  .msg{
+    font-size: var(--font-size-xs); margin-top:11px; white-space: pre-wrap; word-break: break-all; display:none;
+    padding: 8px 10px; border-radius:3px; font-family: var(--font-mono); border-width:1px;
+  }
+  .msg.show{ display:block }
+  .msg.ok { color: var(--good); border-color: var(--good); background: color-mix(in oklch, var(--good) 10%, transparent) }
+  .msg.err{ color: var(--bad);  border-color: var(--bad);  background: color-mix(in oklch, var(--bad)  10%, transparent) }
 
   /* ===== TRADE-PANEL FOOTER STATS ===== */
-  .pstats{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;font-size:11.5px}
-  .pstats .row{display:flex;justify-content:space-between;gap:8px}
-  .pstats .l{color:var(--muted)}.pstats .v{color:var(--tx);font-family:var(--mono);text-align:right}
+  .pstats{
+    margin-top:auto; padding-top:14px; border-top-width:1px;
+    display:grid; grid-template-columns:1fr 1fr; gap:10px 18px; font-size: var(--font-size-xs);
+  }
+  .pstats .row{ display:flex; justify-content:space-between; gap:8px }
+  .pstats .l{ color: var(--off-color); text-transform: uppercase; letter-spacing:.5px; font-family: var(--font-sans); font-size: 10px }
+  .pstats .v{ color: var(--color); font-family: var(--font-mono); text-align:right }
 
   /* ===== BOTTOM TABLE ===== */
-  .bottom{border-top:1px solid var(--line);background:var(--panel);min-height:220px}
-  .btabs{display:flex;gap:0;padding:0 20px;border-bottom:1px solid var(--line);font-size:13px;align-items:center}
-  .btabs span{color:var(--muted);cursor:pointer;padding:12px 0;margin-right:24px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
-  .btabs span.on{color:var(--tx);border-bottom-color:var(--accent)}
-  .btabs span:hover:not(.on){color:var(--tx2)}
-  .btabs .filter{margin-left:auto;color:var(--dim);font-size:11.5px}
-  table{width:100%;border-collapse:collapse;font-size:12px;background:var(--panel)}
-  th{color:var(--dim);font-weight:500;text-align:left;padding:8px 20px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line)}
-  td{padding:9px 20px;border-bottom:1px solid var(--line);font-family:var(--mono);color:var(--tx)}
-  tr.click{cursor:pointer} tr.click:hover td{background:var(--panel2)}
-  td.num{text-align:right}
-  td.empty,.empty{color:var(--dim);text-align:center;padding:24px;font-family:var(--sans)}
+  .bottom{ border-top-width:1px; background: var(--background-color); min-height: 240px }
+  .btabs{
+    display:flex; gap:0; padding:0 24px; border-bottom-width:1px;
+    font-size: var(--font-size-base); align-items:center;
+  }
+  .btabs span{
+    color: var(--off-color); cursor:pointer; padding: 13px 0; margin-right: 26px;
+    font-family: var(--font-sans); font-weight:500; text-transform: uppercase; letter-spacing:.5px;
+    border-bottom-width:2px; border-bottom-color: transparent; margin-bottom:-1px; font-size: var(--font-size-sm);
+  }
+  .btabs span.on{ color: var(--color); border-bottom-color: var(--accent) }
+  .btabs span:hover:not(.on){ color: var(--color) }
+  .btabs .filter{ margin-left:auto; color: var(--off-color); font-size: var(--font-size-xs); cursor: default }
+  table{ width:100%; border-collapse: collapse; font-size: var(--font-size-sm); background: var(--background-color) }
+  th{
+    color: var(--off-color); font-weight:500; text-align:left; padding: 9px 24px;
+    font-size: 10px; text-transform: uppercase; letter-spacing:.6px; border-bottom-width:1px; font-family: var(--font-sans);
+  }
+  td{ padding:10px 24px; border-bottom-width:1px; font-family: var(--font-mono); color: var(--color) }
+  tr.click{ cursor:pointer } tr.click:hover td{ background: var(--panel-color) }
+  td.num{ text-align:right }
+  td.empty, .empty{ color: var(--off-color); text-align:center; padding:28px; font-family: var(--font-sans) }
 
-  /* ===== STATUS BAR (very bottom) ===== */
-  .statusbar{display:flex;align-items:center;gap:18px;padding:8px 20px;border-top:1px solid var(--line);background:var(--panel);font-size:11px;color:var(--muted)}
-  .statusbar .live{display:flex;align-items:center;gap:6px;color:var(--green)}
-  .statusbar .live .dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 6px rgba(80,210,193,.6)}
-  .statusbar .live .dot.down{background:var(--red);box-shadow:0 0 6px rgba(237,112,136,.6)}
-  .statusbar .right{margin-left:auto;display:flex;gap:16px}
-  .statusbar .right a{color:var(--muted)}.statusbar .right a:hover{color:var(--tx)}
+  /* ===== STATUS BAR ===== */
+  .statusbar{
+    display:flex; align-items:center; gap:20px; padding:9px 24px;
+    border-top-width:1px; background: var(--background-color); font-size: var(--font-size-xs); color: var(--off-color);
+  }
+  .statusbar .live{ display:flex; align-items:center; gap:7px; color: var(--good); font-family: var(--font-sans); text-transform: uppercase; letter-spacing:.5px }
+  .statusbar .live .dot{
+    width:7px; height:7px; border-radius:50%; background: var(--good); display:inline-block;
+    box-shadow: 0 0 6px color-mix(in oklch, var(--good) 60%, transparent);
+  }
+  .statusbar .live .dot.down{ background: var(--bad); box-shadow: 0 0 6px color-mix(in oklch, var(--bad) 60%, transparent) }
+  .statusbar .right{ margin-left:auto; display:flex; gap:18px; text-transform: uppercase; letter-spacing:.5px; font-family: var(--font-sans) }
 
-  /* Hide a section visually without removing IDs / handlers — used by setPanel(). */
-  .hide{display:none !important}
+  .hide{ display:none !important }
 </style>
 </head>
 <body>
