@@ -234,6 +234,140 @@ print(json.dumps(out, indent=2))
 }
 
 # ============================================================
+# Prompt 7 Ã¢ÂÂ Rune backing via ord 0.27.1 oracle
+# ============================================================
+prompt_7() {
+    say "Prompt 7: rune backing via ord oracle (positive + negative)"
+    local ORD_BIN="${ORD_BIN:-$HOME/bin/ord}"
+    [ -x "$ORD_BIN" ] || die "ord not found at $ORD_BIN (set ORD_BIN=/path/to/ord)"
+    local ORDDIR="$HOME/btx-audit-p7-ord"
+    local ORDPORT="${ORDPORT:-8089}"
+    rm -rf "$ORDDIR"; mkdir -p "$ORDDIR"
+
+    bootstrap_stack
+    # Mine a few extra blocks past 101 so rune-name length minimum is comfortable.
+    mine_blocks 10
+    local HEIGHT=$($BCLI getblockcount)
+    echo "  pre-etch height = $HEIGHT"
+
+    # Start ord in the background, pointed at our regtest bitcoind.
+    say "Starting ord 0.27.1 on :$ORDPORT"
+    pkill -9 -f -- "ord --chain regtest" 2>/dev/null
+    nohup "$ORD_BIN" --chain regtest --bitcoin-data-dir "$RT"         --cookie-file "$RT/regtest/.cookie" --data-dir "$ORDDIR"         --index-runes server --http-port "$ORDPORT"         > /tmp/btx-audit-p7-ord.log 2>&1 &
+    ORD_PID=$!
+    for i in $(seq 1 30); do
+        sleep 1
+        curl -s "http://127.0.0.1:$ORDPORT/status" >/dev/null 2>&1 && break
+    done
+    if ! curl -s "http://127.0.0.1:$ORDPORT/status" >/dev/null 2>&1; then
+        red "ord didn't come up; tail of log:"; tail -30 /tmp/btx-audit-p7-ord.log
+        die "ord start"
+    fi
+    grn "  ord PID=$ORD_PID up at http://127.0.0.1:$ORDPORT"
+
+    # Etch BTXAUDITRUNES with premine 1000. Use a fresh P2WPKH addr for the premine output.
+    say "Etching BTXAUDITRUNES (premine 1000) via btx_etch.py"
+    cd "$BTX_DIR"
+    local PREMINE_ADDR=$($BCLI -rpcwallet=btx getnewaddress "" bech32)
+    local ETCH_JSON=$(python3 btx_etch.py etch --rune BTXAUDITRUNES         --premine 1000 --divisibility 0 --symbol '$' --premine-addr "$PREMINE_ADDR"         --bitcoin-cli "$BCLI_BIN" --chain regtest --datadir "$RT" --wallet btx         --ord-url "http://127.0.0.1:$ORDPORT" --broadcast 2>&1)
+    echo "$ETCH_JSON" | tail -20
+    # Mine to confirm commit + reveal (etch needs 6 confs in normal flow but on regtest --broadcast skips that)
+    mine_blocks 8
+    sleep 5  # let ord catch up
+
+    # Look up the rune via ord
+    local RUNE_INFO=$(curl -s -H "Accept: application/json"         "http://127.0.0.1:$ORDPORT/rune/BTXAUDITRUNES")
+    echo "  ord /rune/BTXAUDITRUNES: $RUNE_INFO" | head -c 400; echo
+    local RUNE_ID=$(echo "$RUNE_INFO" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('id') or d.get('entry', {}).get('id') or '')
+except Exception:
+    print('')
+")
+    if [ -z "$RUNE_ID" ]; then
+        red "could not parse rune id from ord; raw response:"; echo "$RUNE_INFO"; die "rune lookup"
+    fi
+    local RB=$(echo "$RUNE_ID" | cut -d: -f1)
+    local RT_=$(echo "$RUNE_ID" | cut -d: -f2)
+    echo "  rune id = $RUNE_ID (block=$RB tx=$RT_)"
+
+    # Parse the offer outpoint directly from the etch JSON output (avoids bitcoin-cli's
+    # finicky address-array escaping). btx_etch emits "reveal_txid"; the premine runes
+    # are attributed by ord to vout 0 of the reveal (per the runestone in vout 1).
+    local OFFER_TXID=$(echo "$ETCH_JSON" | python3 -c "
+import sys, re
+buf = sys.stdin.read()
+m = re.search(r'\"reveal_txid\"\s*:\s*\"([0-9a-f]{64})\"', buf)
+print(m.group(1) if m else '')
+")
+    local OFFER_VOUT=0
+    if [ -z "$OFFER_TXID" ]; then
+        red "could not parse reveal_txid from etch JSON; tail of etch output:"
+        echo "$ETCH_JSON" | tail -10
+        die "etch parse"
+    fi
+    echo "  offer (rune-bearing) = $OFFER_TXID:$OFFER_VOUT"
+
+    # ord rune-balance probe on the offer UTXO
+    local ORD_OUTPUT=$(curl -s -H "Accept: application/json"         "http://127.0.0.1:$ORDPORT/output/$OFFER_TXID:$OFFER_VOUT")
+    echo "  ord /output/$OFFER_TXID:$OFFER_VOUT (rune balance check): $(echo "$ORD_OUTPUT" | head -c 300)"
+
+    # ---- NEGATIVE TEST: advertise 1001, must REFUSE ----
+    say "NEGATIVE maker-sign --amount-units 1001 (more than the 1000 backed) â must REFUSE"
+    local NEG_OUT=$(python3 btx_wallet.py maker-sign --bitcoin-cli "$BCLI_BIN"         --datadir "$RT" --wallet btx         --offer-txid "$OFFER_TXID" --offer-vout "$OFFER_VOUT" --price-btc 0.1         --carrier op_return --ord-url "http://127.0.0.1:$ORDPORT" --require-rune-backing         --amount-units 1001 --rune-block "$RB" --rune-tx "$RT_" 2>&1) || true
+    if echo "$NEG_OUT" | grep -qiE "assert_offer_backs_rune|holds.*units.*advertises"; then
+        grn "  PASS: refused with rune-backing assertion"
+        local NEG_PASS=1
+    else
+        red "  FAIL: negative did NOT refuse with the expected assertion. Output:"
+        echo "$NEG_OUT" | tail -10
+        local NEG_PASS=0
+    fi
+
+    # ---- POSITIVE TEST: advertise 1000, must SUCCEED ----
+    say "POSITIVE maker-sign --amount-units 1000 (exact backing) â must SUCCEED"
+    local POS_OUT=$(python3 btx_wallet.py maker-sign --bitcoin-cli "$BCLI_BIN"         --datadir "$RT" --wallet btx         --offer-txid "$OFFER_TXID" --offer-vout "$OFFER_VOUT" --price-btc 0.1         --carrier op_return --ord-url "http://127.0.0.1:$ORDPORT" --require-rune-backing         --amount-units 1000 --rune-block "$RB" --rune-tx "$RT_" 2>&1) || true
+    local POS_ART=$(echo "$POS_OUT" | python3 -c "
+import sys, json, re
+buf = sys.stdin.read()
+m = re.search(r'\{.*\}', buf, re.S)
+if m:
+    try:
+        d = json.loads(m.group(0))
+        print(d.get('artifact_hex') or '')
+    except Exception:
+        pass
+")
+    if [ -n "$POS_ART" ] && [ "${POS_ART:0:8}" = "42545831" ]; then
+        grn "  PASS: signed artifact ($(( ${#POS_ART} / 2 )) bytes, starts BTX1)"
+        local POS_PASS=1
+    else
+        red "  FAIL: positive did not produce an artifact. Output:"
+        echo "$POS_OUT" | tail -10
+        local POS_PASS=0
+    fi
+
+    kill "$ORD_PID" 2>/dev/null; wait "$ORD_PID" 2>/dev/null
+
+    local PASS=$(( NEG_PASS == 1 && POS_PASS == 1 ? 1 : 0 ))
+    python3 -c "
+import json
+out = {'prompt': 7, 'pass': $PASS == 1,
+       'rune_id': '$RUNE_ID',
+       'offer_txid': '$OFFER_TXID', 'offer_vout': '$OFFER_VOUT',
+       'negative_refused': $NEG_PASS == 1,
+       'positive_signed': $POS_PASS == 1}
+open('$RESULT_JSON','w').write(json.dumps(out, indent=2))
+print(json.dumps(out, indent=2))
+"
+    say "=== Prompt 7 Summary ==="
+    [ $PASS -eq 1 ] && grn "Prompt 7: PASS (rune-backing oracle verified)" || red "Prompt 7: FAIL"
+    echo "Result file: $RESULT_JSON"
+}
+
+# ============================================================
 # Prompt 8 — Reorg rollback AND reopen (FILLED → OPEN)
 # ============================================================
 prompt_8() {
@@ -546,13 +680,13 @@ print(json.dumps(out, indent=2))
 # ============================================================
 case "$N" in
     6)  prompt_6 ;;
-    7)  red "Prompt 7 (rune backing via ord oracle) not in runner yet â needs ord 0.27.1 orchestration. Run manually for now."; exit 2 ;;
+    7)  prompt_7 ;;
     8)  prompt_8 ;;
     9)  prompt_9 ;;
     10) prompt_10 ;;
     11) prompt_11 ;;
     12) prompt_12 ;;
-    *)  red "Unknown / unsupported prompt: $N (supported: 6, 8, 9, 10, 11, 12)"; exit 2 ;;
+    *)  red "Unknown / unsupported prompt: $N (supported: 6, 7, 8, 9, 10, 11, 12)"; exit 2 ;;
 esac
 
 cleanup
