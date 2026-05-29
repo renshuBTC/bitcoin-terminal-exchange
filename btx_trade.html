@@ -132,6 +132,17 @@
   }
   .card h3 .sub{ font-size:10px; color:var(--dim); font-weight:400; text-transform:none; letter-spacing:0 }
 
+  /* ===== CHART TABS (inside chart card header) ===== */
+  .ch-tabs{ display:inline-flex; gap:1px; background:var(--panel); padding:2px; border:1px solid var(--line-strong); border-radius:2px; height:24px; box-sizing:border-box }
+  .ch-tab{
+    height:18px; display:inline-flex; align-items:center; justify-content:center;
+    padding:0 9px; font-size:10px; letter-spacing:.5px; line-height:1;
+    background:var(--panel); border:1px solid transparent; border-radius:2px;
+    color:var(--fg); cursor:pointer; font-family:var(--font-mono); text-transform:uppercase;
+    transition: background-color .08s ease, color .08s ease;
+  }
+  .ch-tab:hover{ background:var(--hover); color:var(--fg-bright) }
+  .ch-tab.on{ background:var(--orange); color:#000; border-color:var(--orange); font-weight:700 }
   /* ===== CHART ===== */
   #chart{ flex:1; min-height:280px }
   .chartmeta{ font-size:11px; color:var(--dim); margin-top:6px }
@@ -350,7 +361,13 @@
 <main>
   <!-- CHART -->
   <div class="card">
-    <h3>Price — on-chain fills <span class="sub">block-paced</span></h3>
+    <h3>
+      <span class="ch-tabs">
+        <span class="ch-tab on" data-c="btc" onclick="setChart('btc')">BTC MARK</span>
+        <span class="ch-tab" data-c="rune" onclick="setChart('rune')">RUNE FILLS</span>
+      </span>
+      <span class="sub" id="chartlookback">BRK · price_close · 90d</span>
+    </h3>
     <div id="chart"></div>
     <div class="chartmeta" id="chartnote">rune↔BTC price reconstructed from confirmed swaps. Sparse by nature — Bitcoin blocks, not ticks.</div>
   </div>
@@ -702,6 +719,7 @@ async function refreshMempool(){try{const m=await jget('/api/dex/mempool');LAST.
 
 function tField(x,keys){for(const k of keys)if(x[k]!=null)return x[k];return null;}
 function drawChart(t){
+  if(typeof CHART_MODE!=="undefined" && CHART_MODE!=="rune") return;
   const note=$('chartnote');
   const pts=t.map(x=>{const paid=tField(x,['paid','paid_sats','price'])||0,amt=tField(x,['amount','amt'])||0,h=tField(x,['height','block'])||0;
     return amt? {h, p: paid/amt}:null;}).filter(Boolean);
@@ -843,6 +861,84 @@ async function refreshBrk(){
 // that 20s is plenty; mempool depth slightly faster but still tolerant).
 refreshBrk();
 setInterval(refreshBrk, 20000);
+
+// ---- BTC mark price chart (BRK series proxy via btxd /api/brk/series/...) ----
+// Calls /api/brk/series/price_close/day1/data which (when brk_cli is running) returns a list of
+// {date, value} or [date, value] tuples for daily BTC/USD closes. We just take the last 90 points
+// and draw the same kind of SVG sparkline drawChart() does for rune fills. If the endpoint is
+// unavailable, we render a "BTC price unavailable — start brk_cli to populate" placeholder.
+let CHART_MODE='btc'; let BTC_CACHE=null;
+function setChart(m){
+  CHART_MODE=m;
+  document.querySelectorAll('.ch-tab').forEach(t=>t.classList.toggle('on', t.dataset.c===m));
+  document.getElementById('chartlookback').textContent = m==='btc' ? 'BRK · price_close · 90d' : 'rune↔BTC · on-chain fills';
+  redrawChart();
+}
+function redrawChart(){
+  if(CHART_MODE==='btc') drawBtcChart(BTC_CACHE);
+  else drawChart(LAST.trades||[]);
+}
+async function refreshBtcChart(){
+  // Defensive: silently no-op if brk_cli not serving. Tries the most likely series-name first;
+  // could be extended to a fallback list if the BRK build uses a different identifier.
+  try{
+    const r = await fetch('/api/brk/series/price_close/day1/data?last=90');
+    if(!r.ok) return;
+    const j = await r.json();
+    // Accept several shapes: list of {date,value}, list of [date,value], list of plain numbers.
+    let pts = [];
+    if(Array.isArray(j)){
+      pts = j.map((row,i)=>{
+        if(row==null) return null;
+        if(typeof row==='number') return {x:i, y:row};
+        if(Array.isArray(row)) return {x:row[0], y:Number(row[1])};
+        if(typeof row==='object'){
+          const x = row.date ?? row.t ?? row.index ?? row.height ?? i;
+          const y = row.value ?? row.close ?? row.price ?? row.usd ?? null;
+          return (y==null||isNaN(y)) ? null : {x, y:Number(y)};
+        }
+        return null;
+      }).filter(Boolean);
+    }
+    if(pts.length){ BTC_CACHE = pts; if(CHART_MODE==='btc') drawBtcChart(pts); }
+  }catch(e){ /* silent */ }
+}
+function drawBtcChart(pts){
+  const el=$('chart'), note=$('chartnote');
+  if(!pts || !pts.length){
+    el.innerHTML='<div class="empty" style="padding:60px 0">BTC price series unavailable — start brk_cli to populate.</div>';
+    if(note) note.textContent='BTC mark price chart shows /api/brk/series/price_close/day1/data — derived locally from on-chain data by brk_cli.';
+    return;
+  }
+  const ps = pts.slice(-90);
+  const W=820,H=300,padL=44,padR=12,padT=14,padB=22;
+  const ys = ps.map(p=>p.y);
+  const ymin=Math.min(...ys), ymax=Math.max(...ys)||ymin+1;
+  const X=i=>padL + (i/(ps.length-1||1))*(W-padL-padR);
+  const Y=v=>H-padB - (ymax===ymin?0.5:(v-ymin)/(ymax-ymin))*(H-padT-padB);
+  const poly = ps.map((p,i)=>X(i).toFixed(1)+','+Y(p.y).toFixed(1)).join(' ');
+  // Area fill below the line (subtle orange).
+  const area = `${X(0).toFixed(1)},${(H-padB).toFixed(1)} ${poly} ${X(ps.length-1).toFixed(1)},${(H-padB).toFixed(1)}`;
+  // 4 horizontal gridlines + axis labels
+  const grid = [0.0,0.33,0.67,1.0].map(t=>{
+    const y = padT + t*(H-padT-padB);
+    const v = ymax - t*(ymax-ymin);
+    return `<line x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}" stroke="#1f1f1f" stroke-width="1"/>`
+         + `<text x="${padL-6}" y="${y+3}" font-size="10" fill="#888" text-anchor="end" font-family="Source Code Pro,monospace">$${Math.round(v).toLocaleString()}</text>`;
+  }).join('');
+  const last = ps[ps.length-1].y;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" width="100%" height="100%" role="img" aria-label="BTC mark price chart">`;
+  svg += grid;
+  svg += `<polygon points="${area}" fill="#ff8c00" fill-opacity="0.08"/>`;
+  svg += `<polyline points="${poly}" fill="none" stroke="#ff8c00" stroke-width="1.6"/>`;
+  svg += `<circle cx="${X(ps.length-1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="3" fill="#ff8c00"/>`;
+  svg += `<text x="${(W-padR).toFixed(1)}" y="${(Y(last)-8).toFixed(1)}" font-size="11" fill="#ff8c00" font-weight="bold" text-anchor="end" font-family="Source Code Pro,monospace">$${Math.round(last).toLocaleString()}</text>`;
+  svg += `</svg>`;
+  el.innerHTML = svg;
+  if(note) note.textContent = `${ps.length} daily closes from BRK price_close · ${Math.round(ymin).toLocaleString()}–${Math.round(ymax).toLocaleString()} USD`;
+}
+refreshBtcChart();
+setInterval(refreshBtcChart, 60000);
 
 // ---- Hyperliquid-skin adapter: tiny shim so the legacy refreshStatus() also drives the new live dot,
 //      and the panel-mode pill stays in sync with the inner tabs. No behavior change to the legacy JS.

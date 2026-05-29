@@ -723,8 +723,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(lambda: self._send(h_mining_template()))
         if p.startswith("/api/brk/"):
             name = p[len("/api/brk/"):]
+            # 1) flat allowlist for the BRK upstream /api/v1/<name> routes
             if name in _BRK_READS:
                 return self._guard(lambda: self._send(brk_get(f"/api/v1/{name}") or {}))
+            # 2) path-style allowlist for BRK time-series chart data:
+            #    /api/brk/series/<series>/<index>/data  ->  /api/series/<series>/<index>/data
+            # Restricted to series/<*>/<*>/(data|latest|len) — read-only chart introspection only.
+            # Each path component is validated as alphanumeric+underscore so the proxy can never be
+            # tricked into hitting an unrelated brk_cli route.
+            if name.startswith("series/"):
+                parts = name.split("/")
+                # series/<name>/<index>/<tail>  where tail in {data, latest, len}
+                if (len(parts) == 4
+                        and all(c.isalnum() or c == "_" for c in parts[1] + parts[2])
+                        and parts[3] in {"data", "latest", "len"}):
+                    qs = self.path.split("?", 1)
+                    suffix = "?" + qs[1] if len(qs) == 2 else ""
+                    return self._guard(lambda: self._send(brk_get(f"/api/{name}{suffix}") or {}))
             return self._send({"error": "unknown brk read"}, 404)
         if p == "/api/dex/book":
             return self._guard(lambda: self._send(h_dex_book()))
