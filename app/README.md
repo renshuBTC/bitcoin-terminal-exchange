@@ -4,12 +4,28 @@ The native-window wrapper for BTX. Eventually this becomes the one application
 that ships to end users (Bitcoin Core + brk_cli + ord + btxd + UI in one
 installable program). M1 just opens the existing web UI in a native window.
 
-## M1 — what works right now
+## M1 — what worked
 
 A native Windows / Linux / macOS window that loads `http://127.0.0.1:3333` —
-the URL where `btxd` already serves the BTX UI. No daemons are bundled yet;
-you still start them with `bash btx-launch.sh` in WSL the way you do today.
-The point of M1 is to prove the shell itself works.
+the URL where `btxd` already serves the BTX UI. **Verified working on
+Windows 11.**
+
+## M2 — what works now (current milestone)
+
+The shell starts the BTX daemon stack itself. Concretely: when you run
+`cargo tauri dev`, the shell now (a) spawns `bash btx-launch.sh` in WSL
+in the background, (b) waits up to 60 seconds for btxd's port 3333 to
+become reachable, then (c) shows the native window. On window close,
+the shell runs `bash btx-launch.sh stop` so nothing is left behind.
+
+Net effect: you no longer need to start `btxd` separately. Open the app,
+the stack comes up. Close the window, the stack stops. (For now, btxd
+still runs via WSL — the project directory is hard-coded to
+`/mnt/c/Users/Ren Shu/Documents/Claude/Projects/bitcoin-terminal-exchange`
+in `src/lib.rs`. M3 reads this from config; M5 ships native binaries.)
+
+The window stays hidden until btxd responds, so you don't see a broken
+"connection refused" page during startup.
 
 ## Prerequisites
 
