@@ -36,12 +36,19 @@ pub fn run() {
                 sup.start_all().await;
                 eprintln!("[btx-app] daemon stack up; reloading webview");
                 if let Some(window) = app_handle.get_webview_window("main") {
-                    // The hidden window already tried to load http://127.0.0.1:3333
-                    // when it was created — but btxd wasn't up yet, so that fetch
-                    // failed and the webview is now showing a Chromium error page.
-                    // Reload now that the supervisor has btxd serving.
-                    let _ = window.eval("window.location.reload();");
-                    // Brief moment for the reload to start before unhiding.
+                    // M4: route first-launch users to the setup wizard.
+                    // Check if ~/.btx/setup.json exists inside WSL — if not,
+                    // navigate to btx_setup.html instead of the default route.
+                    let first_launch = check_first_launch().await;
+                    let target_path = if first_launch {
+                        eprintln!("[btx-app] first launch detected; routing to setup wizard");
+                        "/btx_setup.html"
+                    } else {
+                        eprintln!("[btx-app] setup already complete; loading trade page");
+                        "/"
+                    };
+                    let nav_js = format!("window.location='{target_path}';");
+                    let _ = window.eval(&nav_js);
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                     eprintln!("[btx-app] showing window");
                     let _ = window.show();
@@ -90,6 +97,23 @@ pub fn run() {
 #[tauri::command]
 fn ping() -> String {
     "pong from btx-app".to_string()
+}
+
+/// M4: probe whether ~/.btx/setup.json exists in WSL.
+/// Returns true if it does NOT exist (= first launch).
+async fn check_first_launch() -> bool {
+    let cmd = "test -f $HOME/.btx/setup.json && echo yes || echo no";
+    let output = tokio::process::Command::new("wsl.exe")
+        .args(["bash", "-c", cmd])
+        .output()
+        .await;
+    match output {
+        Ok(out) => {
+            let s = String::from_utf8_lossy(&out.stdout);
+            s.trim() != "yes"
+        }
+        Err(_) => true, // If we can't even probe, treat as first launch.
+    }
 }
 
 #[tauri::command]

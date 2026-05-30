@@ -29,6 +29,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -200,6 +201,29 @@ def h_config():
     return {"chain": CFG["chain"], "wallet": CFG.get("wallet"), "brk_url": CFG["brk_url"],
             "datadir": CFG.get("datadir"), "ord_url": CFG.get("ord_url"),
             "rune_oracle": bool(CFG.get("ord_url"))}
+
+
+def h_setup_complete(body):
+    """Write ~/.btx/setup.json marker so the Tauri shell knows future
+    launches skip the wizard. M4 of the bundle work. Body fields:
+    chain (str), wallet (str)."""
+    chain = (body.get("chain") or "signet").strip()
+    wallet = (body.get("wallet") or "btx").strip()
+    if chain not in ("signet", "main", "mainnet", "regtest", "testnet"):
+        return {"error": "unknown chain"}, 400
+    if not wallet or len(wallet) > 64 or any(c in wallet for c in "/\\: "):
+        return {"error": "invalid wallet name"}, 400
+    setup_dir = os.path.expanduser("~/.btx")
+    try:
+        os.makedirs(setup_dir, exist_ok=True)
+        marker = os.path.join(setup_dir, "setup.json")
+        import json as _json
+        with open(marker, "w") as f:
+            _json.dump({"chain": chain, "wallet": wallet,
+                        "completed_at": int(time.time())}, f)
+        return {"ok": True, "chain": chain, "wallet": wallet}, 200
+    except OSError as e:
+        return {"error": f"failed to write marker: {e}"}, 500
 
 
 def h_node_status():
@@ -760,6 +784,24 @@ class Handler(BaseHTTPRequestHandler):
         # log tailing. This sidesteps Tauri 2's permission system for remote
         # URLs (which blocks direct IPC calls from btxd-served pages) — the
         # debug pane in btx_daemons.html uses fetch() against these routes.
+        # ---- First-launch wizard state (M4) --------------------------------
+        # Setup is marked complete by POST /api/setup/complete writing a
+        # marker file to ~/.btx/setup.json. The Tauri shell checks this on
+        # launch and routes to btx_setup.html if missing.
+        if p == "/api/setup/state":
+            def _read_setup():
+                marker = os.path.expanduser("~/.btx/setup.json")
+                if not os.path.isfile(marker):
+                    return {"complete": False}
+                try:
+                    import json as _json
+                    with open(marker, "r") as f:
+                        data = _json.load(f)
+                    data["complete"] = True
+                    return data
+                except (OSError, ValueError):
+                    return {"complete": False}
+            return self._guard(lambda: self._send(_read_setup()))
         if p == "/api/supervisor/status":
             def _read_status():
                 try:
@@ -812,6 +854,7 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._send({"error": "invalid JSON body"}, 400)
         routes = {
+            "/api/setup/complete": lambda: h_setup_complete(body),
             "/api/wallet/newaddress": lambda: (h_newaddress(), 200),
             "/api/mining/generate": lambda: h_mining_generate(body),
             "/api/order/create": lambda: h_order_create(body),

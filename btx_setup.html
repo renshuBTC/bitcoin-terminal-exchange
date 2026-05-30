@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap">
+<style>
+:root{
+  --bg:#000; --fg:#d4d4d4; --fg-bright:#fff;
+  --muted:#888; --dim:#666;
+  --border:#2a2a2a; --border-soft:#1f1f1f;
+  --hover:#1a1a1a; --panel:#0d0d0d;
+  --line-strong:#555;
+  --orange:#ff8c00; --orange-bright:#ffaa33;
+  --red:#f0616d; --red-bg:#1a0e0e; --red-border:#5e2e34;
+  --green:#26a69a; --green-bg:#0e1a16; --green-border:#1a4940;
+  --amber:#e6b34a;
+  --font-mono:'Source Code Pro', Consolas, Menlo, monospace;
+  --font-display:'Roboto Condensed', system-ui, sans-serif;
+}
+*{margin:0; padding:0; box-sizing:border-box}
+::selection{ background:var(--orange); color:#000 }
+html,body{ height:100%; background:var(--bg); color:var(--fg); font-family:var(--font-mono); font-size:13px; line-height:1.45; font-variant-numeric:tabular-nums }
+button{ font-family:inherit; cursor:pointer }
+input{ font-family:inherit }
+
+.frame{
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; padding:40px 20px;
+}
+
+.brand{
+  display:flex; align-items:center; gap:10px;
+  font-family:var(--font-display); font-weight:700; font-size:22px;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.9px;
+  margin-bottom:8px;
+}
+.brand::before{
+  content:""; display:inline-block; width:24px; height:24px;
+  background:var(--orange); border-radius:4px;
+  background-image:linear-gradient(135deg, var(--orange) 60%, var(--orange-bright) 100%);
+}
+.tagline{
+  color:var(--muted); font-size:12px; margin-bottom:30px;
+  text-transform:uppercase; letter-spacing:.7px;
+}
+
+.steps{
+  display:flex; gap:8px; margin-bottom:28px;
+  font-size:10px; color:var(--dim);
+  text-transform:uppercase; letter-spacing:.6px;
+}
+.steps .s{ padding:4px 10px; border:1px solid var(--border-soft); border-radius:2px }
+.steps .s.on{ color:var(--orange); border-color:#7a4b13 }
+.steps .s.done{ color:var(--green); border-color:var(--green-border) }
+.steps .sep{ color:var(--dim); padding:4px 0 }
+
+.card{
+  width:100%; max-width:640px;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:3px; padding:30px 36px;
+}
+h1{
+  font-family:var(--font-display); font-size:20px; font-weight:700;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.5px;
+  margin-bottom:8px;
+}
+.lede{ font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.6 }
+
+.choices{ display:flex; flex-direction:column; gap:10px; margin-bottom:24px }
+.choice{
+  display:flex; align-items:flex-start; gap:12px;
+  border:1px solid var(--border); border-radius:3px;
+  padding:16px 18px; cursor:pointer;
+  transition:border-color .12s ease, background-color .12s ease;
+}
+.choice:hover{ background:var(--hover); border-color:var(--line-strong) }
+.choice.sel{ border-color:var(--orange); background:#1a0e00 }
+.choice .radio{
+  width:16px; height:16px; border-radius:50%;
+  border:2px solid var(--line-strong); flex-shrink:0; margin-top:2px;
+  display:flex; align-items:center; justify-content:center;
+}
+.choice.sel .radio{ border-color:var(--orange) }
+.choice.sel .radio::after{
+  content:""; width:7px; height:7px; border-radius:50%; background:var(--orange);
+}
+.choice .info{ flex:1; min-width:0 }
+.choice .name{
+  font-family:var(--font-display); font-weight:700; font-size:14px;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.5px;
+  margin-bottom:4px;
+}
+.choice .desc{ font-size:11.5px; color:var(--muted); line-height:1.6 }
+.choice .badge{
+  display:inline-block; margin-left:8px; padding:2px 6px;
+  font-size:9px; border-radius:2px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.5px;
+}
+.choice .badge.rec{ background:var(--green); color:#000 }
+.choice .badge.warn{ background:#7a4b13; color:var(--amber) }
+
+label{
+  display:block; font-size:10px; color:var(--muted); margin:18px 0 6px;
+  text-transform:uppercase; letter-spacing:.6px;
+}
+.field{
+  width:100%; background:var(--bg); color:var(--fg);
+  border:1px solid var(--border); border-radius:2px;
+  padding:10px 12px; font-size:14px;
+}
+.field:focus{ outline:none; border-color:var(--orange) }
+
+.actions{ display:flex; gap:10px; margin-top:28px; justify-content:flex-end }
+.btn{
+  padding:10px 22px; font-size:12px; font-weight:700;
+  border-radius:2px; text-transform:uppercase; letter-spacing:.6px;
+  border:1px solid;
+}
+.btn-primary{ background:var(--orange); color:#000; border-color:var(--orange) }
+.btn-primary:hover{ background:var(--orange-bright); border-color:var(--orange-bright) }
+.btn-primary:disabled{ background:var(--panel); color:var(--dim); border-color:var(--border); cursor:not-allowed }
+.btn-secondary{ background:transparent; color:var(--fg); border-color:var(--border) }
+.btn-secondary:hover{ background:var(--hover); border-color:var(--line-strong) }
+
+.progress-row{
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-size:11px; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;
+}
+.progress-row .v{ color:var(--fg); font-family:var(--font-mono); text-transform:none; letter-spacing:0 }
+.bar{
+  height:8px; background:var(--panel); border:1px solid var(--border-soft);
+  border-radius:2px; overflow:hidden; margin-bottom:16px;
+}
+.bar-fill{
+  height:100%; background:linear-gradient(90deg, var(--orange) 0%, var(--orange-bright) 100%);
+  width:0%; transition:width .3s ease;
+}
+.sync-meta{
+  border-top:1px solid var(--border-soft); padding-top:14px; margin-top:18px;
+  display:grid; grid-template-columns:1fr 1fr; gap:10px 30px;
+}
+.sync-meta .row{ display:flex; justify-content:space-between; font-size:11px }
+.sync-meta .row .l{ color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-size:10px }
+.sync-meta .row .r{ color:var(--fg); font-family:var(--font-mono) }
+
+.note{
+  margin-top:18px; padding:12px 14px; border-radius:2px;
+  background:var(--panel); border:1px solid var(--border-soft);
+  font-size:11px; color:var(--muted); line-height:1.6;
+}
+.note b{ color:var(--amber); font-weight:600 }
+.note code{
+  font-family:var(--font-mono); font-size:11px;
+  background:var(--hover); padding:1px 5px; border-radius:2px; color:var(--fg);
+}
+
+.footer{ margin-top:30px; font-size:10px; color:var(--dim); text-align:center; letter-spacing:.5px }
+.footer a{ color:var(--dim); text-decoration:none }
+.footer a:hover{ color:var(--fg-bright); text-decoration:underline; text-decoration-color:var(--orange) }
+</style>
+</head>
+<body>
+<div class="frame">
+
+<div class="brand">BTX</div>
+<div class="tagline">Bitcoin Onchain Exchange — first-launch setup</div>
+
+<div class="steps" id="steps">
+  <span class="s on" id="step-1">1 · Network</span>
+  <span class="sep">›</span>
+  <span class="s" id="step-2">2 · Wallet</span>
+  <span class="sep">›</span>
+  <span class="s" id="step-3">3 · Sync</span>
+  <span class="sep">›</span>
+  <span class="s" id="step-4">4 · Ready</span>
+</div>
+
+<div class="card" id="card-1">
+  <h1>Pick a network</h1>
+  <p class="lede">
+    BTX runs against a Bitcoin network. Signet is a free test network — good for
+    learning, no real money. Mainnet is real Bitcoin — every trade costs sats
+    and an initial sync downloads the full blockchain.
+  </p>
+
+  <div class="choices" id="net-choices">
+    <div class="choice sel" data-chain="signet">
+      <div class="radio"></div>
+      <div class="info">
+        <div class="name">Signet <span class="badge rec">Recommended for now</span></div>
+        <div class="desc">
+          Test network. Trades use test coins with no value. Faucets provide
+          free test BTC. Indexer + ord catch up in under a minute. All BTX
+          features work end-to-end. Pick this if you're trying BTX out.
+        </div>
+      </div>
+    </div>
+    <div class="choice" data-chain="main">
+      <div class="radio"></div>
+      <div class="info">
+        <div class="name">Mainnet <span class="badge warn">~3-7 day sync · 700+ GB disk</span></div>
+        <div class="desc">
+          Real Bitcoin. Trades use real sats. Initial sync downloads the full
+          blockchain — about 700 GB and 3-7 days on a typical connection. The
+          UI will be unavailable until sync completes. Pick this only if you
+          have the disk space and patience and you actually want to trade.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="net-next">Continue →</button>
+  </div>
+</div>
+
+<div class="card" id="card-2" style="display:none">
+  <h1>Name your wallet</h1>
+  <p class="lede">
+    Your wallet stores your keys locally — BTX never holds your money.
+    Pick a short name to identify it. You can run multiple wallets later
+    in the same Bitcoin Core; "btx" is a sensible default.
+  </p>
+
+  <label for="wallet-name">Wallet name</label>
+  <input class="field" id="wallet-name" type="text" value="btx" maxlength="32">
+
+  <div class="note">
+    <b>What happens next:</b> BTX creates a Bitcoin Core wallet named
+    <code id="wallet-preview">btx</code> on the selected network
+    (<code id="chain-preview">signet</code>). The wallet keys are stored
+    in your Bitcoin Core data directory — back up that directory if you
+    care about the funds inside.
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" id="wallet-back">← Back</button>
+    <button class="btn btn-primary" id="wallet-next">Create wallet</button>
+  </div>
+</div>
+
+<div class="card" id="card-3" style="display:none">
+  <h1>Syncing with Bitcoin</h1>
+  <p class="lede">
+    Your node is downloading the blockchain. You can close this window —
+    BTX will keep going in the background and let you know when it's done.
+  </p>
+
+  <div class="progress-row">
+    <span>Progress</span>
+    <span class="v"><span id="pct">0.0</span>%</span>
+  </div>
+  <div class="bar"><div class="bar-fill" id="bar"></div></div>
+
+  <div class="sync-meta">
+    <div class="row"><span class="l">Network</span><span class="r" id="sync-chain">signet</span></div>
+    <div class="row"><span class="l">Block height</span><span class="r" id="sync-height">—</span></div>
+    <div class="row"><span class="l">Peers</span><span class="r" id="sync-peers">—</span></div>
+    <div class="row"><span class="l">Estimate</span><span class="r" id="sync-eta">—</span></div>
+  </div>
+
+  <div class="note" id="sync-note">
+    Initial sync on signet takes about 30-60 seconds. On mainnet it can take
+    days — see the BTX docs for what to expect.
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" id="sync-skip">Hide window</button>
+    <button class="btn btn-primary" id="sync-go" style="display:none">Enter BTX →</button>
+  </div>
+</div>
+
+<div class="card" id="card-4" style="display:none">
+  <h1>Ready</h1>
+  <p class="lede">
+    Your node is synced, your wallet is loaded, the BTX indexer is serving.
+    From here you can publish offers, fill swaps, and watch the order book.
+  </p>
+
+  <div class="sync-meta" style="border-top:none;padding-top:0;margin-top:0;display:flex;flex-direction:column;gap:8px">
+    <div class="row"><span class="l">Network</span><span class="r" id="done-chain">signet</span></div>
+    <div class="row"><span class="l">Wallet</span><span class="r" id="done-wallet">btx</span></div>
+    <div class="row"><span class="l">Block height</span><span class="r" id="done-height">—</span></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="enter-trade">Open trading terminal →</button>
+  </div>
+</div>
+
+<div class="footer">
+  Self-custody · Bitcoin L1 only · No website, no relay · <a href="/btx_daemons.html">Daemons</a>
+</div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let chain = "signet";
+let walletName = "btx";
+
+// ===== Step 1: Network choice =====
+const netChoices = document.querySelectorAll("#net-choices .choice");
+netChoices.forEach(c => {
+  c.onclick = () => {
+    netChoices.forEach(x => x.classList.remove("sel"));
+    c.classList.add("sel");
+    chain = c.dataset.chain;
+  };
+});
+$("net-next").onclick = () => {
+  $("card-1").style.display = "none";
+  $("card-2").style.display = "";
+  $("step-1").classList.remove("on");
+  $("step-1").classList.add("done");
+  $("step-2").classList.add("on");
+  $("chain-preview").textContent = chain;
+};
+
+// ===== Step 2: Wallet name =====
+$("wallet-name").oninput = () => {
+  const v = $("wallet-name").value.trim() || "btx";
+  walletName = v;
+  $("wallet-preview").textContent = v;
+};
+$("wallet-back").onclick = () => {
+  $("card-2").style.display = "none";
+  $("card-1").style.display = "";
+  $("step-2").classList.remove("on");
+  $("step-1").classList.remove("done");
+  $("step-1").classList.add("on");
+};
+$("wallet-next").onclick = async () => {
+  walletName = ($("wallet-name").value || "btx").trim();
+  $("card-2").style.display = "none";
+  $("card-3").style.display = "";
+  $("step-2").classList.remove("on");
+  $("step-2").classList.add("done");
+  $("step-3").classList.add("on");
+  $("sync-chain").textContent = chain;
+  $("done-chain").textContent = chain;
+  $("done-wallet").textContent = walletName;
+  if (chain === "main") {
+    $("sync-note").innerHTML =
+      '<b>Mainnet selected.</b> The initial blockchain download is ~700 GB ' +
+      'and takes 3-7 days depending on your connection. The UI stays unavailable ' +
+      'until sync finishes. Make sure your disk has at least 800 GB free.';
+  }
+  startSyncPolling();
+};
+
+// ===== Step 3: Sync progress =====
+async function pollNodeStatus() {
+  try {
+    const r = await fetch("/api/node/status", { cache: "no-store" });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function fmtPct(p) {
+  if (p == null) return "0.0";
+  return (p * 100).toFixed(p > 0.999 ? 4 : 2);
+}
+
+function fmtEta(blocks_left, blocks_per_min) {
+  if (!blocks_left || !blocks_per_min || blocks_per_min < 1) return "—";
+  const mins = blocks_left / blocks_per_min;
+  if (mins < 1) return "less than a minute";
+  if (mins < 60) return `${Math.ceil(mins)} min`;
+  const hrs = mins / 60;
+  if (hrs < 24) return `${Math.ceil(hrs)} hr`;
+  return `${(hrs / 24).toFixed(1)} d`;
+}
+
+let lastHeight = null;
+let lastTs = null;
+let blocksPerMin = 0;
+
+async function syncTick() {
+  const s = await pollNodeStatus();
+  if (!s) return;
+
+  const progress = s.verificationprogress ?? 0;
+  const height = s.blocks ?? 0;
+  const headers = s.headers ?? height;
+  const peers = s.peers ?? s.connections ?? 0;
+  const blocksLeft = Math.max(0, headers - height);
+
+  // EMA on indexing rate
+  const now = Date.now();
+  if (lastHeight != null && lastTs != null && height > lastHeight) {
+    const delta = height - lastHeight;
+    const dt = (now - lastTs) / 60000;
+    if (dt > 0) {
+      const inst = delta / dt;
+      blocksPerMin = blocksPerMin === 0 ? inst : (blocksPerMin * 0.7 + inst * 0.3);
+    }
+  }
+  lastHeight = height;
+  lastTs = now;
+
+  $("pct").textContent = fmtPct(progress);
+  $("bar").style.width = (progress * 100).toFixed(2) + "%";
+  $("sync-height").textContent = `${height.toLocaleString()} / ${headers.toLocaleString()}`;
+  $("sync-peers").textContent = peers;
+  $("sync-eta").textContent = progress > 0.999 ? "synced" : fmtEta(blocksLeft, blocksPerMin);
+
+  if (progress > 0.999) {
+    $("sync-go").style.display = "";
+    $("done-height").textContent = height.toLocaleString();
+  }
+}
+
+let syncInterval = null;
+function startSyncPolling() {
+  syncTick();
+  syncInterval = setInterval(syncTick, 2000);
+}
+
+$("sync-skip").onclick = () => { window.close(); };
+$("sync-go").onclick = async () => {
+  if (syncInterval) clearInterval(syncInterval);
+  $("card-3").style.display = "none";
+  $("card-4").style.display = "";
+  $("step-3").classList.remove("on");
+  $("step-3").classList.add("done");
+  $("step-4").classList.add("on");
+};
+
+// ===== Step 4: Finish =====
+$("enter-trade").onclick = async () => {
+  // Mark setup complete on btxd side, then navigate to the trade page.
+  try {
+    await fetch("/api/setup/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chain, wallet: walletName }),
+    });
+  } catch (e) {
+    console.error("setup/complete failed", e);
+  }
+  window.location = "/";
+};
+
+// ===== Initial state: check if we're actually first-launch =====
+// If the user navigates here manually after setup was already completed,
+// just give them a "back to trade" link rather than walking the wizard.
+(async () => {
+  try {
+    const r = await fetch("/api/setup/state", { cache: "no-store" });
+    if (r.ok) {
+      const s = await r.json();
+      if (s.complete) {
+        // Already configured. Show step 4 directly with current info.
+        $("card-1").style.display = "none";
+        $("card-4").style.display = "";
+        $("step-1").classList.remove("on");
+        $("step-1").classList.add("done");
+        $("step-2").classList.add("done");
+        $("step-3").classList.add("done");
+        $("step-4").classList.add("on");
+        if (s.chain) $("done-chain").textContent = s.chain;
+        if (s.wallet) $("done-wallet").textContent = s.wallet;
+      }
+    }
+  } catch (e) {
+    // No-op — if setup state endpoint is missing we just walk the wizard.
+  }
+})();
+</script>
+</body>
+</html>
