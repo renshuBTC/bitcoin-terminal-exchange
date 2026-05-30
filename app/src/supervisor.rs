@@ -548,17 +548,36 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> Vec<DaemonSpec> {
         format!(" {prune_arg}")
     };
 
-    // Note: -txindex is incompatible with -prune. BTX needs neither for
-    // signet smoke flows (mempool decode + cookie auth work without txindex),
-    // so we omit txindex when pruning. Mainnet users with an existing
-    // datadir get whatever Core was already configured with.
+    // Note: -txindex is incompatible with -prune. ord needs txindex to look
+    // up arbitrary transactions (root cause of the M7 ord wedge — without
+    // txindex, ord panics with bitcoind RPC error -5 "No such mempool
+    // transaction. Use -txindex" the moment it tries to inspect a tx,
+    // crash-loops via supervisor, and never advances its index).
+    //
+    // Resolution by chain:
+    //   regtest: prune is OFF (set to 0), so -txindex=1 is compatible. We
+    //            unconditionally enable it for trade-rail support.
+    //   signet:  prune is ON (-prune=2000 for ~2GB cap) — incompatible with
+    //            txindex. Trade-rail testing on signet remains broken from
+    //            this layer; the historic signet trade flow (memory task
+    //            #88) ran without prune. Tradeoff: small disk footprint vs.
+    //            trade-rail support. For now, keep prune on signet — users
+    //            who want to test the trade rail on signet can disable
+    //            prune in their setup.json (datadir_override path) and
+    //            run with txindex.
+    //   mainnet: user's existing Core install via M5b.6 datadir_override —
+    //            inherits whatever Core was already configured with.
+    let bitcoind_txindex = match chain {
+        "regtest" => " -txindex=1",
+        _ => "",
+    };
 
     vec![
         DaemonSpec {
             name: "bitcoind",
             wsl_command: format!(
                 "mkdir -p {datadir} && \
-                 exec $HOME/.btx/bin/bitcoind {chain_flag} -datadir={datadir}{bitcoind_pruning} \
+                 exec $HOME/.btx/bin/bitcoind {chain_flag} -datadir={datadir}{bitcoind_pruning}{bitcoind_txindex} \
                  -datacarrier=1 -datacarriersize=240 \
                  -fallbackfee=0.0002 -dbcache=300 -server -printtoconsole \
                  > {LOG_DIR_WSL}/btx-bitcoind.log 2>&1"
