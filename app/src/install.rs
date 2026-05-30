@@ -52,6 +52,7 @@ const BUNDLED_HTML: &[&str] = &[
     "btx_create.html",
     "btx_daemons.html",
     "btx_setup.html",
+    "btx_activity.html",
 ];
 
 /// Spawn a WSL Command suppressing the console window on Windows.

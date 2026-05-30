@@ -118,6 +118,7 @@ main{ display:grid; grid-template-columns: minmax(420px, 1.4fr) minmax(380px, 1f
     <a href="/btx_trades.html">Trades</a>
     <a href="/btx_create.html">Create</a>
     <a class="on">Wallet</a>
+    <a href="/btx_activity.html">Activity</a>
     <a href="https://github.com/renshuBTC" target="_blank" rel="noopener">Docs</a>
   </div>
   <div class="navright">
@@ -371,11 +372,7 @@ function wireAssetActions(){
             false);
         }
       } else if(act === 'send'){
-        openModal(`Send ${asset}`,
-          `<div style="font-size:12px;color:var(--fg);line-height:1.7">Send isn't wired into btxd yet — it'd need a new <code style="background:var(--panel);padding:1px 5px;border-radius:2px">/api/wallet/send</code> endpoint backed by <code style="background:var(--panel);padding:1px 5px;border-radius:2px">bitcoin-cli sendtoaddress</code>.</div>
-           <div style="font-size:11px;color:var(--muted);margin-top:10px">For now you can run from WSL:<br><code style="background:var(--panel);padding:6px 10px;border-radius:2px;display:block;margin-top:6px;font-size:11px">bitcoin-cli -signet -datadir=~/sig-public -rpcwallet=btx sendtoaddress &lt;addr&gt; &lt;amt&gt;</code></div>
-           <div style="font-size:10.5px;color:var(--dim);margin-top:10px">Tracked as task #227 (Send + dedicated Activity page).</div>`,
-          false);
+        openSendForm(asset);
       }
     };
   });
@@ -385,6 +382,154 @@ $('utxoHead').onclick = () => {
   $('utxoPanel').classList.toggle('open');
   $('utxoCaret').innerHTML = $('utxoPanel').classList.contains('open') ? '&#9650;' : '&#9662;';
 };
+
+// ===== M6: Send flow ======================================================
+//
+// Two-step modal: form -> confirm -> POST /api/wallet/send -> result. Asset
+// is BTC only for now (the only path with a real bitcoin-cli backing); the
+// stablecoin rails are settlement-PSBT-based and live under the trade page.
+function openSendForm(asset){
+  if (asset !== 'BTC'){
+    openModal(`Send ${asset}`,
+      `<div style="font-size:12px;color:var(--fg);line-height:1.7">
+         ${esc(asset)} sends route through the BTX swap rails (rune settlement PSBT),
+         not a plain wallet send. Use the trade page's <b>OTC</b> tab to
+         hand-build a directed swap, or post an OPEN offer from the
+         publish tab.
+       </div>
+       <div style="font-size:11px;color:var(--muted);margin-top:10px">
+         The trade page is at <a href="/" style="color:var(--orange)">/</a>.
+       </div>`,
+      false);
+    return;
+  }
+  openModal('Send BTC',
+    `<div style="font-size:11px;color:var(--muted);margin-bottom:12px">
+       Sends from your local Bitcoin Core wallet. Self-custody — BTX never
+       touches your keys; this just runs <code style="background:var(--panel);padding:1px 5px;border-radius:2px">bitcoin-cli sendtoaddress</code> against your node.
+     </div>
+     <label style="display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Destination address</label>
+     <input id="sendAddr" type="text" autocomplete="off" spellcheck="false"
+            style="width:100%;background:var(--panel);border:1px solid var(--border-soft);color:var(--fg);padding:8px 10px;font-family:var(--font-mono);font-size:12px;border-radius:2px;margin-bottom:10px"
+            placeholder="bc1q… or tb1q…">
+
+     <label style="display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Amount (BTC)</label>
+     <input id="sendAmt" type="text" inputmode="decimal" autocomplete="off"
+            style="width:100%;background:var(--panel);border:1px solid var(--border-soft);color:var(--fg);padding:8px 10px;font-family:var(--font-mono);font-size:12px;border-radius:2px;margin-bottom:10px"
+            placeholder="0.00010000">
+
+     <label style="display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Fee rate (sat/vB, optional)</label>
+     <input id="sendFee" type="text" inputmode="decimal" autocomplete="off"
+            style="width:100%;background:var(--panel);border:1px solid var(--border-soft);color:var(--fg);padding:8px 10px;font-family:var(--font-mono);font-size:12px;border-radius:2px;margin-bottom:10px"
+            placeholder="leave blank for Core's estimate">
+
+     <label style="display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Label (optional)</label>
+     <input id="sendLabel" type="text" autocomplete="off" maxlength="255"
+            style="width:100%;background:var(--panel);border:1px solid var(--border-soft);color:var(--fg);padding:8px 10px;font-family:var(--font-mono);font-size:12px;border-radius:2px"
+            placeholder="rent · faucet refund · …">
+
+     <div id="sendError" style="color:var(--red);font-size:11.5px;margin-top:10px;min-height:14px"></div>`,
+    false);
+  // Swap the confirm button into a "Continue" button that validates + opens confirm step.
+  $('modalConfirm').style.display = '';
+  $('modalConfirm').textContent = 'Continue';
+  $('modalConfirm').onclick = onSendContinue;
+}
+
+function onSendContinue(){
+  const addr = $('sendAddr').value.trim();
+  const amt = $('sendAmt').value.trim();
+  const fee = $('sendFee').value.trim();
+  const label = $('sendLabel').value.trim();
+  const err = $('sendError');
+
+  if (!addr){ err.textContent = 'Address required.'; return; }
+  if (addr.length > 90){ err.textContent = 'Address looks too long.'; return; }
+  const amtNum = parseFloat(amt);
+  if (!(amtNum > 0)){ err.textContent = 'Amount must be > 0 BTC.'; return; }
+  if (amtNum > 21_000_000){ err.textContent = 'Amount exceeds 21M BTC.'; return; }
+  let feeNum = null;
+  if (fee){
+    feeNum = parseFloat(fee);
+    if (!(feeNum > 0 && feeNum <= 10000)){
+      err.textContent = 'Fee rate must be in (0, 10000] sat/vB.';
+      return;
+    }
+  }
+
+  // Confirm step.
+  $('modalTitle').textContent = 'Confirm send';
+  $('modalBody').innerHTML = `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+      Review carefully — Bitcoin sends are irreversible.
+    </div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:10px 14px;font-size:12px">
+      <div style="color:var(--muted)">To</div>
+      <div style="font-family:var(--font-mono);color:var(--fg-bright);word-break:break-all">${esc(addr)}</div>
+
+      <div style="color:var(--muted)">Amount</div>
+      <div style="font-family:var(--font-mono);color:var(--fg-bright)">${esc(amtNum.toFixed(8))} BTC</div>
+      <div style="color:var(--muted)">&nbsp;</div>
+      <div style="font-family:var(--font-mono);color:var(--muted);font-size:11px">${esc(Math.round(amtNum * 1e8).toLocaleString())} sats</div>
+
+      <div style="color:var(--muted)">Fee rate</div>
+      <div style="font-family:var(--font-mono);color:var(--fg-bright)">${feeNum != null ? esc(feeNum.toFixed(2)) + ' sat/vB' : '<span style="color:var(--muted)">Core estimate</span>'}</div>
+
+      ${label ? `<div style="color:var(--muted)">Label</div>
+                 <div style="color:var(--fg)">${esc(label)}</div>` : ''}
+
+      <div style="color:var(--muted)">Wallet</div>
+      <div style="color:var(--fg)">${esc($('walletName').textContent)} (self-custody)</div>
+    </div>
+    <div id="sendError" style="color:var(--red);font-size:11.5px;margin-top:14px;min-height:14px"></div>
+  `;
+  $('modalCancel').textContent = 'Back';
+  $('modalCancel').onclick = () => openSendForm('BTC');  // re-open form with empty fields (per design — they can retype, prevents partial-mod risk)
+  $('modalConfirm').textContent = `Send ${amtNum.toFixed(8)} BTC`;
+  $('modalConfirm').onclick = () => doSend({ address: addr, amount_btc: amtNum, fee_rate: feeNum, label });
+}
+
+async function doSend(payload){
+  $('modalConfirm').textContent = 'Sending…';
+  $('modalConfirm').disabled = true;
+  $('modalCancel').disabled = true;
+
+  const res = await postJson('/api/wallet/send', payload);
+
+  $('modalConfirm').disabled = false;
+  $('modalCancel').disabled = false;
+  $('modalCancel').textContent = 'Close';
+  $('modalCancel').onclick = () => $('modal').classList.remove('open');
+
+  if (res.ok && res.body && res.body.txid){
+    $('modalTitle').textContent = 'Send confirmed';
+    $('modalBody').innerHTML = `
+      <div style="font-size:12px;color:var(--green);margin-bottom:14px">
+        ✓ Broadcast to the network.
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Transaction id</div>
+      <div class="addr" style="font-family:var(--font-mono);font-size:11.5px;background:var(--panel);border:1px solid var(--border-soft);padding:10px 12px;border-radius:2px;word-break:break-all;color:var(--fg-bright)">${esc(res.body.txid)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:14px">
+        It'll show up in <a href="/btx_activity.html" style="color:var(--orange)">Activity</a> as
+        soon as your node sees the next mempool refresh. Confirmations land
+        every ~10 minutes (signet block time).
+      </div>
+    `;
+    $('modalConfirm').style.display = 'none';
+    refresh();  // pull updated balance + UTXOs
+  } else {
+    const errMsg = (res.body && (res.body.error || JSON.stringify(res.body))) || ('HTTP ' + res.status);
+    $('modalTitle').textContent = 'Send failed';
+    $('modalBody').innerHTML = `
+      <div style="color:var(--red);font-size:12px;line-height:1.6">${esc(errMsg)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px">
+        Nothing was broadcast. Check your inputs and try again.
+      </div>
+    `;
+    $('modalConfirm').textContent = 'Try again';
+    $('modalConfirm').onclick = () => openSendForm('BTC');
+  }
+}
 
 refresh();
 setInterval(refresh, 5000);

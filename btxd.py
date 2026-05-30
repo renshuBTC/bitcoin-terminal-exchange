@@ -303,6 +303,140 @@ def h_newaddress():
     return {"address": bcli("getnewaddress", "", "bech32", wallet=True)}
 
 
+# ---- M6: Wallet Send + Activity --------------------------------------------
+
+def h_wallet_send(body):
+    """Send a plain BTC payment via bitcoin-cli sendtoaddress.
+
+    Body fields:
+        address    (str)   destination address (validated by Core)
+        amount_btc (number) amount in BTC (Decimal-safe via str())
+        fee_rate   (number, optional) sat/vB; if provided, set fee_rate
+                   via -named sendtoaddress; otherwise let Core estimate
+        label      (str, optional) wallet label for the outgoing tx
+
+    Returns: {"txid": "..."} or {"error": "..."} with HTTP code.
+
+    Safety:
+    - All input is validated before touching bitcoin-cli.
+    - We never construct shell strings — every arg is a separate argv.
+    - The wallet lock is held by the route dispatcher (same lock as
+      offer-create and rune-etch) so we don't race a UTXO with an
+      in-flight swap-fill on the same wallet.
+    """
+    address = (body.get("address") or "").strip()
+    if not address:
+        return {"error": "address required"}, 400
+    # Reject anything that smells like an arg-injection attempt — Core's
+    # bech32 / base58 addresses are alphanumeric only (plus the bech32 1
+    # separator). The actual address-form check is delegated to Core.
+    if any(c in address for c in "\x00 \t\n\r"):
+        return {"error": "address contains whitespace or control chars"}, 400
+    if len(address) > 90:
+        return {"error": "address too long"}, 400
+
+    amount_raw = body.get("amount_btc")
+    if amount_raw is None:
+        return {"error": "amount_btc required"}, 400
+    try:
+        amount = float(amount_raw)
+    except (TypeError, ValueError):
+        return {"error": "amount_btc must be a number"}, 400
+    if not (amount > 0):
+        return {"error": "amount_btc must be > 0"}, 400
+    if amount > 21_000_000:  # absolute upper bound
+        return {"error": "amount_btc exceeds 21M BTC"}, 400
+
+    fee_rate = body.get("fee_rate")
+    if fee_rate is not None:
+        try:
+            fee_rate = float(fee_rate)
+        except (TypeError, ValueError):
+            return {"error": "fee_rate must be a number (sat/vB)"}, 400
+        if not (0 < fee_rate <= 10_000):
+            return {"error": "fee_rate must be in (0, 10000] sat/vB"}, 400
+
+    label = (body.get("label") or "").strip()
+    if len(label) > 255:
+        return {"error": "label too long"}, 400
+
+    # Pre-flight: check the wallet actually has enough trusted balance.
+    # Core would surface this as an error anyway, but a clean 400 here
+    # gives a much better UX than the raw RPC error string.
+    try:
+        bals = bcli("getbalances", wallet=True)
+        trusted = (bals.get("mine") or {}).get("trusted") or 0
+        if amount > float(trusted):
+            return {"error": "insufficient trusted balance",
+                    "have_btc": trusted, "want_btc": amount}, 400
+    except (RuntimeError, AttributeError):
+        # If the balance probe fails, let Core be the source of truth.
+        pass
+
+    # Build the sendtoaddress argv. Each value is a separate argv element;
+    # no shell string concatenation. Optional fee_rate uses the named-arg
+    # form which Core accepts when -named is passed.
+    args = ["-named", "sendtoaddress",
+            f"address={address}",
+            f"amount={amount}"]
+    if label:
+        args.append(f"comment={label}")
+    if fee_rate is not None:
+        args.append(f"fee_rate={fee_rate}")
+
+    try:
+        txid = bcli(*args, wallet=True)
+    except RuntimeError as e:
+        # bitcoin-cli printed something explanatory; pass it through.
+        return {"error": str(e)}, 400
+
+    # bcli returns a stripped string for non-JSON output (txids are
+    # raw hex). Guard against the unexpected.
+    if not isinstance(txid, str) or len(txid) != 64:
+        return {"error": "unexpected response from bitcoin-cli",
+                "raw": txid}, 500
+
+    return {"ok": True, "txid": txid,
+            "address": address, "amount_btc": amount,
+            "fee_rate_sat_vb": fee_rate, "label": label or None}, 200
+
+
+def h_wallet_transactions():
+    """Return a recent BTC wallet transaction history for the activity
+    page. Wraps `bitcoin-cli listtransactions "*" 100` and filters to
+    the fields the UI needs.
+
+    Each row is one wallet-relevant input/output (Core's listtransactions
+    explodes multi-output txs into per-address rows); the UI groups by
+    txid for display.
+    """
+    try:
+        rows = bcli("listtransactions", "*", 100, wallet=True)
+    except RuntimeError as e:
+        return {"error": str(e)}, 500
+    if not isinstance(rows, list):
+        return {"error": "unexpected listtransactions shape"}, 500
+
+    out = []
+    for r in rows:
+        out.append({
+            "txid": r.get("txid"),
+            "category": r.get("category"),       # send, receive, generate, immature, orphan
+            "amount": r.get("amount"),           # negative for sends, positive for receives
+            "fee": r.get("fee"),                 # negative; only present on send-category
+            "address": r.get("address"),
+            "confirmations": r.get("confirmations"),
+            "blockheight": r.get("blockheight"),
+            "blocktime": r.get("blocktime"),
+            "time": r.get("time"),
+            "label": r.get("label"),
+            "abandoned": r.get("abandoned", False),
+        })
+    # listtransactions returns oldest-first; flip to newest-first for UI.
+    out.reverse()
+    return {"transactions": out, "count": len(out)}, 200
+
+
 def h_mining_info():
     info = bcli("getmininginfo")
     return {"blocks": info.get("blocks"), "difficulty": info.get("difficulty"),
@@ -779,6 +913,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(lambda: self._send(h_node_status()))
         if p == "/api/wallet":
             return self._guard(lambda: self._send(h_wallet()))
+        if p == "/api/wallet/transactions":
+            def _send_tx():
+                res = h_wallet_transactions()
+                obj, code = res if isinstance(res, tuple) else (res, 200)
+                self._send(obj, code)
+            return self._guard(_send_tx)
         if p == "/api/mining/info":
             return self._guard(lambda: self._send(h_mining_info()))
         if p == "/api/mining/template":
@@ -894,6 +1034,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {
             "/api/setup/complete": lambda: h_setup_complete(body),
             "/api/wallet/newaddress": lambda: (h_newaddress(), 200),
+            "/api/wallet/send": lambda: h_wallet_send(body),
             "/api/mining/generate": lambda: h_mining_generate(body),
             "/api/order/create": lambda: h_order_create(body),
             "/api/order/fill": lambda: h_order_fill(body),
