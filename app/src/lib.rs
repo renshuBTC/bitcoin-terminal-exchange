@@ -100,13 +100,24 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(move |_window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                eprintln!("[btx-app] window destroyed; stopping daemon stack");
+        .on_window_event(move |window, event| {
+            // v0.2.5: switch from Destroyed → CloseRequested so we run the
+            // shutdown *before* the window is gone. Destroyed fires after
+            // the OS window is already torn down, by which point Tauri is
+            // racing the process exit and our stop_all may not finish in
+            // time — losing bitcoind's dbcache flush on the way out.
+            //
+            // CloseRequested with api.prevent_close() lets us intercept the
+            // close, run async stop_all to completion, then explicitly call
+            // window.destroy() to release the app cleanly.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                eprintln!("[btx-app] close requested; stopping daemon stack first");
+                api.prevent_close();
                 let sup = sup_for_close.clone();
+                let window = window.clone();
                 // Run shutdown on a dedicated thread with its own tokio
                 // runtime so we don't deadlock the main async runtime.
-                let handle = std::thread::spawn(move || {
+                std::thread::spawn(move || {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()
@@ -114,14 +125,12 @@ pub fn run() {
                     rt.block_on(async move {
                         sup.stop_all().await;
                     });
+                    eprintln!("[btx-app] all daemons stopped; closing window");
+                    // Now that bitcoind has flushed and every daemon is
+                    // down, actually destroy the window so the process can
+                    // exit cleanly.
+                    let _ = window.destroy();
                 });
-                // Wait up to 20s for stop_all to complete before letting
-                // the app process exit. SHUTDOWN_GRACE_SECS in the
-                // supervisor is 10s per daemon × 4 daemons = up to 40s
-                // worst case, but in practice each port closes in <1s
-                // after SIGTERM, so 20s is plenty.
-                let _ = handle.join();
-                eprintln!("[btx-app] all daemons stopped");
             }
         })
         .invoke_handler(tauri::generate_handler![
