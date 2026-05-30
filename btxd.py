@@ -766,7 +766,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         p = self.path.split("?", 1)[0]
         if p in ("/", "/index.html"):
-            return self._send_file("btx_app.html" if os.path.isfile(os.path.join(UI_DIR, "btx_app.html")) else "index.html")
+            # Landing page priority: trade terminal > legacy dashboard >
+            # generic index. M5b bundle ships only btx_trade.html as a
+            # landing, so the trade page is the realistic default.
+            for candidate in ("btx_trade.html", "btx_app.html", "index.html"):
+                if os.path.isfile(os.path.join(UI_DIR, candidate)):
+                    return self._send_file(candidate)
+            return self._send({"error": "no landing page bundled"}, 500)
         if p == "/api/config":
             return self._guard(lambda: self._send(h_config()))
         if p == "/api/node/status":

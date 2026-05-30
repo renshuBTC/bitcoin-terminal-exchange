@@ -67,10 +67,24 @@ fn wsl_command() -> Command {
 
 /// Convert a Windows path like `C:\Users\Alice\AppData\Local\BTX\resources`
 /// to a WSL path like `/mnt/c/Users/Alice/AppData/Local/BTX/resources`.
-/// Returns None for paths we can't parse (no drive letter prefix).
+///
+/// Handles Windows's `\\?\` extended-length prefix that Tauri 2's
+/// `resource_dir()` returns — Win32 canonicalize wraps long-enabled paths
+/// in `\\?\C:\...` form, which strips off here. Returns None for paths
+/// we can't parse (no drive letter prefix).
 pub fn win_path_to_wsl(p: &std::path::Path) -> Option<String> {
     let s = p.to_string_lossy().to_string();
-    // Match e.g. "C:\..." or "C:/..."
+    // Strip the extended-length prefix Tauri returns:
+    //   \\?\C:\Users\...  ->  C:\Users\...
+    //   \\?\UNC\server\.. ->  None (we don't try to reach UNC paths from WSL)
+    let s: &str = if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        let _ = rest;
+        return None;
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest
+    } else {
+        &s
+    };
     let bytes = s.as_bytes();
     if bytes.len() < 3 {
         return None;
@@ -79,7 +93,7 @@ pub fn win_path_to_wsl(p: &std::path::Path) -> Option<String> {
         return None;
     }
     let drive = (bytes[0] as char).to_ascii_lowercase();
-    let rest = &s[2..].replace('\\', "/");
+    let rest = s[2..].replace('\\', "/");
     // Strip leading slash to avoid /mnt/c//Users
     let rest = rest.trim_start_matches('/');
     Some(format!("/mnt/{drive}/{rest}"))
@@ -154,18 +168,22 @@ pub async fn install_bundled_assets(resources_dir: PathBuf) -> Result<(), Instal
         script.push_str(&format!("chmod +x $HOME/.btx/bin/{bin}\n"));
     }
 
-    // Copy Python sources.
+    // Copy Python sources. Tauri's NSIS bundle normalizes `../<file>`
+    // resource entries by placing them in a `_up_/` subdirectory of the
+    // install dir (one level up from tauri.conf.json maps to `_up_`),
+    // so the resources we declared as "../btxd.py" actually land at
+    // <install_dir>/_up_/btxd.py at runtime.
     for py in BUNDLED_PYTHON {
         script.push_str(&format!(
-            "cp -f '{resources_wsl}/{py}' $HOME/.btx/app/{py}\n"
+            "cp -f '{resources_wsl}/_up_/{py}' $HOME/.btx/app/{py}\n"
         ));
     }
 
-    // Copy HTML pages — btxd serves these from cwd, so they need to live
-    // alongside btxd.py in ~/.btx/app/.
+    // Copy HTML pages — same `_up_/` convention. btxd serves these from
+    // cwd, so they need to live alongside btxd.py in ~/.btx/app/.
     for page in BUNDLED_HTML {
         script.push_str(&format!(
-            "cp -f '{resources_wsl}/{page}' $HOME/.btx/app/{page}\n"
+            "cp -f '{resources_wsl}/_up_/{page}' $HOME/.btx/app/{page}\n"
         ));
     }
 
@@ -290,6 +308,22 @@ mod tests {
     #[test]
     fn wsl_path_rejects_unc() {
         let p = std::path::Path::new(r"\\server\share\file");
+        assert!(win_path_to_wsl(p).is_none());
+    }
+
+    #[test]
+    fn wsl_path_strips_extended_prefix() {
+        // Tauri returns this form on Windows.
+        let p = std::path::Path::new(r"\\?\C:\Users\Ren Shu\AppData\Local\BTX");
+        assert_eq!(
+            win_path_to_wsl(p).unwrap(),
+            "/mnt/c/Users/Ren Shu/AppData/Local/BTX"
+        );
+    }
+
+    #[test]
+    fn wsl_path_rejects_extended_unc() {
+        let p = std::path::Path::new(r"\\?\UNC\server\share\file");
         assert!(win_path_to_wsl(p).is_none());
     }
 }
