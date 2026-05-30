@@ -46,21 +46,21 @@ const SHUTDOWN_GRACE_SECS: u64 = 10;
 const HEALTH_POLL_SECS: u64 = 3;
 const LOG_DIR_WSL: &str = "/tmp";
 
-// v0.2.8 ord wedge detector. ord occasionally stops polling bitcoind for
-// new blocks while its HTTP server stays up. The supervisor polls btxd's
+// ord wedge detector. ord occasionally stops polling bitcoind for new
+// blocks while its HTTP server stays up. The supervisor polls btxd's
 // /api/health endpoint (btxd runs inside WSL with full visibility — it
 // can reach ord and bitcoin-cli that wsl.exe bash -c "..." invocations
-// from Rust cannot, see the reference-wsl-subshell memory). When ord
-// lags bitcoind by more than ORD_WEDGE_GAP_THRESHOLD for longer than
-// ORD_WEDGE_DURATION_SECS, restart_one("ord") is called; v0.2.6's
+// from Rust cannot, see the reference-wsl-subshell memory). When the
+// detector decides ord is wedged, restart_one("ord") is called; v0.2.6's
 // embedded stale-lock recovery handles cleanup if needed.
 //
-// Only enabled on regtest where reindex is cheap (<10s for 200 blocks).
-// signet/mainnet keep manual recovery until the threshold is tuned for
-// legitimate cold-start reindex times.
+// v0.2.12 rewrite: STALL-based detection — wedge = ord's height has not
+// advanced for ORD_WEDGE_STALL_SECS while bitcoind's height has, OR ord
+// has been unreachable for ORD_WEDGE_STALL_SECS. The v0.2.10 gap-based
+// check (ord lags bitcoind by N blocks) tripped a false positive during
+// legitimate cold-start reindex on signet/mainnet where ord can stay
+// 1000+ blocks behind for minutes while making real progress.
 const ORD_WEDGE_POLL_SECS: u64 = 15;
-const ORD_WEDGE_GAP_THRESHOLD: u64 = 5;
-const ORD_WEDGE_DURATION_SECS: u64 = 60;
 const BTXD_HEALTH_URL_PATH: &str = "/api/health";
 const BTXD_PORT: u16 = 3333;
 
@@ -116,14 +116,15 @@ pub struct DaemonRuntime {
 pub struct Supervisor {
     daemons: Arc<Mutex<HashMap<String, Arc<Mutex<DaemonRuntime>>>>>,
     shutting_down: Arc<Mutex<bool>>,
-    /// v0.2.8: whether to spawn the ord wedge detector at start_all time.
-    /// Set by make_specs_from_setup based on chain (true on regtest only
-    /// for v0.2.8; signet/mainnet keep manual recovery).
-    ord_wedge_detector_enabled: bool,
+    /// v0.2.12: ord wedge stall threshold in seconds. None disables the
+    /// detector; Some(N) spawns it with N-second stall tolerance.
+    /// Set by make_specs_from_setup per chain (regtest: 60s, signet: 300s,
+    /// mainnet: 300s, others: None).
+    ord_wedge_stall_secs: Option<u64>,
 }
 
 impl Supervisor {
-    pub fn new(specs: Vec<DaemonSpec>, ord_wedge_detector_enabled: bool) -> Self {
+    pub fn new(specs: Vec<DaemonSpec>, ord_wedge_stall_secs: Option<u64>) -> Self {
         let mut map = HashMap::new();
         for spec in specs {
             let name = spec.name.to_string();
@@ -142,7 +143,7 @@ impl Supervisor {
         Self {
             daemons: Arc::new(Mutex::new(map)),
             shutting_down: Arc::new(Mutex::new(false)),
-            ord_wedge_detector_enabled,
+            ord_wedge_stall_secs,
         }
     }
 
@@ -158,76 +159,111 @@ impl Supervisor {
             self.start_one(&name).await;
         }
         self.spawn_status_publisher();
-        if self.ord_wedge_detector_enabled {
-            self.spawn_ord_wedge_detector();
+        if let Some(stall_secs) = self.ord_wedge_stall_secs {
+            self.spawn_ord_wedge_detector(stall_secs);
         }
     }
 
-    /// v0.2.8 ord wedge detector. Polls btxd's /api/health endpoint over
-    /// localhost:3333 every ORD_WEDGE_POLL_SECS to get ord's and bitcoind's
-    /// current block heights. When the gap exceeds ORD_WEDGE_GAP_THRESHOLD
-    /// for longer than ORD_WEDGE_DURATION_SECS, restart_one("ord") is called.
+    /// v0.2.12 stall-based ord wedge detector. Polls btxd's /api/health
+    /// endpoint every ORD_WEDGE_POLL_SECS and tracks two stall windows:
+    ///
+    /// - `last_ord_advance`: when ord's height last changed (Some(h) → new h)
+    /// - `last_btc_advance`: when bitcoind's height last changed
+    ///
+    /// Wedge condition: ord has NOT advanced for at least `stall_secs`
+    /// AND bitcoind HAS advanced more recently than ord did. In other
+    /// words, the chain is moving but ord is frozen on it.
+    ///
+    /// Also wedge if ord is unreachable (None) for `stall_secs`.
+    ///
+    /// Why stall rather than block-gap (v0.2.10's heuristic): a cold-start
+    /// reindex on signet/mainnet legitimately lags by hundreds/thousands
+    /// of blocks for minutes — but ord IS advancing during that window,
+    /// so the stall timer keeps resetting. Only a truly frozen ord
+    /// triggers the restart.
     ///
     /// Why poll btxd rather than ord/bitcoind directly via wsl.exe: see
-    /// the `reference-wsl-subshell` memory. `wsl.exe bash -c "..."`
-    /// invocations from Tauri's tokio process silently return empty for
-    /// $() subshells that touch network or RPC. btxd already runs inside
-    /// WSL with full daemon visibility, and the WebView already polls it
-    /// over :3333 — that path is proven to work end-to-end.
-    fn spawn_ord_wedge_detector(&self) {
+    /// the `reference-wsl-subshell` memory.
+    fn spawn_ord_wedge_detector(&self, stall_secs: u64) {
         let sup = self.clone();
         let shutting_down = self.shutting_down.clone();
-        eprintln!("[wedge-detector] spawning (via btxd /api/health on :{BTXD_PORT})");
+        eprintln!(
+            "[wedge-detector] spawning (stall={stall_secs}s, via btxd /api/health on :{BTXD_PORT})"
+        );
         tokio::spawn(async move {
-            let mut wedge_since: Option<Instant> = None;
+            let mut last_ord_h: Option<u64> = None;
+            let mut last_ord_advance = Instant::now();
+            let mut last_btc_h: Option<u64> = None;
+            let mut last_btc_advance = Instant::now();
             loop {
                 tokio::time::sleep(Duration::from_secs(ORD_WEDGE_POLL_SECS)).await;
                 if *shutting_down.lock().await {
                     return;
                 }
                 // Skip if ord isn't currently Running. Avoids false-positive
-                // restarts during start/stop transitions.
+                // restarts during start/stop/restart transitions.
                 let ord_state = match sup.lookup("ord").await {
                     Some(arc) => arc.lock().await.state.clone(),
-                    None => {
-                        wedge_since = None;
-                        continue;
-                    }
+                    None => continue,
                 };
                 if !matches!(ord_state, State::Running) {
-                    wedge_since = None;
+                    // Reset trackers — a restart in progress is not a wedge.
+                    last_ord_h = None;
+                    last_ord_advance = Instant::now();
+                    last_btc_h = None;
+                    last_btc_advance = Instant::now();
                     continue;
                 }
                 let (ord_h, btc_h) = match fetch_btxd_health().await {
                     Some(pair) => pair,
-                    None => {
-                        // btxd unreachable or returned junk — transient.
-                        wedge_since = None;
-                        continue;
+                    None => continue, // btxd transient; don't reset trackers
+                };
+                // Update ord advance tracking.
+                if let Some(h) = ord_h {
+                    if Some(h) != last_ord_h {
+                        last_ord_h = Some(h);
+                        last_ord_advance = Instant::now();
                     }
-                };
-                let is_wedged = match (ord_h, btc_h) {
-                    (Some(o), Some(b)) => b.saturating_sub(o) > ORD_WEDGE_GAP_THRESHOLD,
-                    // ord null while bitcoind reports a height — ord HTTP
-                    // unresponsive, which is itself the wedge signature.
-                    (None, Some(_)) => true,
-                    _ => false,
-                };
+                }
+                // Update bitcoind advance tracking.
+                if let Some(h) = btc_h {
+                    if Some(h) != last_btc_h {
+                        last_btc_h = Some(h);
+                        last_btc_advance = Instant::now();
+                    }
+                }
+                // Wedge condition:
+                //   ord stalled for >= stall_secs AND bitcoind has
+                //   advanced more recently than ord. The second clause
+                //   prevents a quiet chain (no new blocks anywhere) from
+                //   tripping the detector.
+                //
+                //   ord_h=None counts as "not advancing" — the unreachable
+                //   case is handled implicitly.
+                let ord_stall = last_ord_advance.elapsed();
+                let btc_moved_more_recently = last_btc_advance > last_ord_advance;
+                let is_wedged = ord_stall >= Duration::from_secs(stall_secs)
+                    && btc_moved_more_recently;
                 if is_wedged {
-                    let since = *wedge_since.get_or_insert_with(Instant::now);
-                    if since.elapsed() >= Duration::from_secs(ORD_WEDGE_DURATION_SECS) {
-                        let ord_s = ord_h.map(|n| format!("h={n}")).unwrap_or_else(|| "unreachable".into());
-                        let btc_s = btc_h.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
-                        eprintln!(
-                            "[supervisor] ord wedged ({ord_s}, bitcoind={btc_s}) \
-                             for {}s; restarting",
-                            since.elapsed().as_secs()
-                        );
-                        sup.restart_one("ord").await;
-                        wedge_since = None;
-                    }
-                } else {
-                    wedge_since = None;
+                    let ord_s = last_ord_h
+                        .map(|n| format!("h={n}"))
+                        .unwrap_or_else(|| "unreachable".into());
+                    let btc_s = last_btc_h
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "?".into());
+                    eprintln!(
+                        "[supervisor] ord wedged ({ord_s}, bitcoind={btc_s}, \
+                         ord stalled {}s while bitcoind kept advancing); \
+                         restarting",
+                        ord_stall.as_secs()
+                    );
+                    sup.restart_one("ord").await;
+                    // Reset trackers after restart so the new ord has time
+                    // to come up before we measure stall again.
+                    last_ord_h = None;
+                    last_ord_advance = Instant::now();
+                    last_btc_h = None;
+                    last_btc_advance = Instant::now();
                 }
             }
         });
@@ -574,12 +610,20 @@ impl Supervisor {
 ///
 /// If `setup.datadir_override` is set, it wins over the chain default
 /// regardless of chain.
-/// Returns `(specs, enable_wedge_detector)`. The bool flag tells
-/// `Supervisor::new` whether to spawn the v0.2.8 ord wedge detector; only
-/// true on regtest where reindex on restart is cheap (~10s for 200 blocks).
-/// On signet/mainnet a legitimate cold-start reindex can run >60s and
-/// would trip ORD_WEDGE_DURATION_SECS as a false positive.
-pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>, bool) {
+/// Returns `(specs, ord_wedge_stall_secs)`. The `ord_wedge_stall_secs`
+/// tells `Supervisor::new` how many seconds ord can have its height
+/// frozen (while bitcoind keeps advancing) before being restarted.
+/// `None` disables the v0.2.12 wedge detector entirely.
+///
+/// Per-chain thresholds:
+/// - regtest: 60s (chain advances fast in tests; quick detection wanted)
+/// - signet:  300s (5 min — survives reindex hiccups, recovers fast)
+/// - mainnet: 300s (same reasoning as signet)
+///
+/// The stall heuristic survives legitimate cold-start reindex because
+/// ord IS advancing during it; the timer keeps resetting until ord is
+/// genuinely frozen.
+pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>, Option<u64>) {
     let chain = setup.chain.as_deref().unwrap_or("signet");
     let wallet = setup.wallet.as_deref().unwrap_or("btx");
 
@@ -758,12 +802,18 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
         },
     ];
 
-    // v0.2.8: wedge detector enabled only on regtest. signet/mainnet's
-    // legitimate cold-start reindex can exceed ORD_WEDGE_DURATION_SECS
-    // and trip a false positive; we keep those on manual recovery until
-    // the thresholds are tuned per chain.
-    let enable_wedge_detector = chain == "regtest";
-    (specs, enable_wedge_detector)
+    // v0.2.12: wedge detector enabled across regtest/signet/mainnet
+    // with chain-tuned stall thresholds. The stall heuristic (ord height
+    // frozen while bitcoind keeps advancing) survives legitimate
+    // cold-start reindex on all three chains, since ord IS advancing
+    // during reindex and the timer resets each tick.
+    let ord_wedge_stall_secs = match chain {
+        "regtest" => Some(60),
+        "signet" => Some(300),
+        "main" | "mainnet" => Some(300),
+        _ => None,
+    };
+    (specs, ord_wedge_stall_secs)
 }
 
 /// Back-compat shim — pre-M5b code referred to make_default_specs(). New

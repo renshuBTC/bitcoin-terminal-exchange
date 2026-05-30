@@ -35,8 +35,8 @@ pub fn run() {
         setup.chain, setup.wallet, setup.datadir_override
     );
 
-    let (specs, enable_wedge_detector) = supervisor::make_specs_from_setup(&setup);
-    let sup = Arc::new(Supervisor::new(specs, enable_wedge_detector));
+    let (specs, ord_wedge_stall_secs) = supervisor::make_specs_from_setup(&setup);
+    let sup = Arc::new(Supervisor::new(specs, ord_wedge_stall_secs));
     let sup_for_setup = sup.clone();
     let sup_for_state = sup.clone();
     let sup_for_close = sup.clone();

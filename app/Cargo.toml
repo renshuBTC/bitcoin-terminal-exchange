@@ -1,6 +1,6 @@
 [package]
 name = "btx-app"
-version = "0.2.11"
+version = "0.2.12"
 description = "BTX — Bitcoin onchain exchange (Tauri shell)"
 authors = ["renshuBTC"]
 edition = "2021"
