@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BTX",
+  "version": "0.1.0",
+  "identifier": "com.renshubtc.btx",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": "http://127.0.0.1:3333",
+    "beforeBuildCommand": "",
+    "frontendDist": "../"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "BTX — Bitcoin Onchain Exchange",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Finance",
+    "shortDescription": "Bitcoin onchain exchange + wallet, all in one app",
+    "longDescription": "BTX is a unified Bitcoin Layer 1 application. Bitcoin Core, the BRK indexer, ord oracle, and the BTX trading terminal — bundled into one installable program. Self-custody, no off-chain order book, no third-party server."
+  }
+}

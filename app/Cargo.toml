@@ -1,0 +1,30 @@
+[package]
+name = "btx-app"
+version = "0.1.0"
+description = "BTX — Bitcoin onchain exchange (Tauri shell)"
+authors = ["renshuBTC"]
+edition = "2021"
+
+# The library + binary split is Tauri's standard layout. src/main.rs is the
+# tiny entry point; src/lib.rs holds the actual Builder so the same code can
+# be reused on mobile targets later if we ever want them.
+[lib]
+name = "btx_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Release profile: small + fast. Tauri shells are tiny by design;
+# these flags keep the binary under ~5 MB for the M1 baseline.
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
