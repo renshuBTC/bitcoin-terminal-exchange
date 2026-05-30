@@ -73,6 +73,37 @@ Served by the `brk-btx` node over: `/api/v1/btx/orders`, `/groups`, `/history`, 
 cumulative announce/fill/cancel commitment), and `/event-stream` (the per-block `[{height, block_hash,
 cumulative}]` sequence a light client folds to follow the book incrementally).
 
+## Bundled Windows app (`app/`, v0.2.x)
+
+A native Windows .exe (Tauri + Rust supervisor) that bundles all four daemons inside it: an end user
+double-clicks the installer, the supervisor spins up `bitcoind`, `brk_cli`, `ord`, and `btxd` inside
+WSL, and the BTX trading terminal opens in a native window. No separate WSL setup, no daemon
+management, no relay, no third-party server. Build via `app\rebuild.ps1` from PowerShell.
+
+Self-healing, end-to-end:
+
+- **First-launch setup wizard** picks chain (regtest/signet/mainnet) and wallet name, persists to
+  `~/.btx/setup.json`. Mainnet users point at their existing Bitcoin Core datadir.
+- **Bundled daemons** (bitcoind 29.1, brk_cli 0.3.0-beta.9, ord 0.27.1, btxd) are copied into
+  `~/.btx/bin` and `~/.btx/app` on first launch via a version-sentinel; subsequent launches reuse
+  them.
+- **Per-daemon supervisor** spawns each in dependency order, monitors a TCP readiness probe, restarts
+  on crash with backoff, and exposes status to `btx_daemons.html`.
+- **Graceful shutdown** on window close: every daemon receives SIGTERM and gets 10s to flush before
+  SIGKILL. Bitcoind's dbcache (up to 300MB) is preserved across closes — chain persists.
+- **ord stale-lock auto-recovery** (v0.2.6): if ord's embedded redb says "Database already open" on
+  startup (after a SIGKILL'd prior process left its OPEN flag set), the supervisor `rm`s the index
+  subdir and lets ord rebuild. Only fires on regtest where reindex is cheap.
+- **ord wedge auto-detection** (v0.2.10–v0.2.12): every 15s the supervisor reads ord's and bitcoind's
+  current heights through `btxd /api/health` (Rust talks to btxd over the same `:3333` the WebView
+  uses; this sidesteps a wsl.exe-from-Tauri subshell trap where `$()` substitutions silently return
+  empty). When ord's height has been frozen for `stall_secs` while bitcoind has advanced more recently,
+  `restart_one("ord")` fires. Thresholds: 60s regtest, 300s signet, 300s mainnet — the stall heuristic
+  survives a legitimate cold-start reindex (ord IS advancing during it, the timer resets each tick) but
+  catches a genuinely wedged ord.
+- **Full E2E proven through the bundled GUI**: etch → maker-sign → publish via OP_RETURN → see in
+  Book → fill → see in Trades. See `BTX-bundled-app-e2e-runbook.md` for the reproducible script.
+
 ## Maker/taker tooling
 - `btxd.py` — local orchestrator the terminal talks to: proxies the `brk-btx` reads, runs the
   proven CLIs for actions (publish, fill, batch-fill, etch, addressed + rune↔rune swaps), and
