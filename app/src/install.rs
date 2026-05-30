@@ -53,7 +53,14 @@ const BUNDLED_HTML: &[&str] = &[
     "btx_daemons.html",
     "btx_setup.html",
     "btx_activity.html",
+    "btx_order.html",
 ];
+
+/// Shared CSS file from assets/. Lives in a parallel `assets/` subdir
+/// under ~/.btx/app/ so the existing <link href="assets/btx.css"> in
+/// each page resolves cleanly. Without this, btx_book/trades/create/order
+/// render as unstyled plain HTML.
+const BUNDLED_ASSETS: &[&str] = &["btx.css"];
 
 /// Spawn a WSL Command suppressing the console window on Windows.
 /// Mirrors supervisor::wsl_command — duplicated to keep this module
@@ -185,6 +192,16 @@ pub async fn install_bundled_assets(resources_dir: PathBuf) -> Result<(), Instal
     for page in BUNDLED_HTML {
         script.push_str(&format!(
             "cp -f '{resources_wsl}/_up_/{page}' $HOME/.btx/app/{page}\n"
+        ));
+    }
+
+    // Copy shared CSS into ~/.btx/app/assets/ so the <link href="assets/btx.css">
+    // tags in btx_book/trades/create/order pages resolve. Without this they
+    // render as unstyled HTML with the nav links concatenated into one blob.
+    script.push_str("mkdir -p $HOME/.btx/app/assets\n");
+    for asset in BUNDLED_ASSETS {
+        script.push_str(&format!(
+            "cp -f '{resources_wsl}/_up_/assets/{asset}' $HOME/.btx/app/assets/{asset}\n"
         ));
     }
 
