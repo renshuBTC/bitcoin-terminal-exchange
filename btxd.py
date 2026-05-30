@@ -258,6 +258,69 @@ def h_setup_complete(body):
         return {"error": f"failed to write marker: {e}"}, 500
 
 
+def h_health():
+    """v0.2.8: heights of ord and bitcoind for the supervisor's wedge detector.
+
+    The Tauri/Rust supervisor can't reach ord/bitcoin-cli from `wsl.exe bash
+    -c "..."` invocations (the $() subshells silently return empty — see the
+    `reference-wsl-subshell` memory). btxd runs inside WSL with full daemon
+    visibility and can call ord + bcli directly, so we expose the heights
+    over the already-working :3333 HTTP port. The supervisor TCP-connects
+    to btxd from Windows (the WebView already does this).
+
+    Returns null per field on error so a transient failure is visible to
+    the caller without throwing.
+    """
+    ord_h = None
+    if CFG.get("ord_url"):
+        # Use a RAW socket with explicit settimeout(1) rather than
+        # urllib.urlopen(req, timeout=1). Reproduced 2026-05-30: urllib's
+        # timeout doesn't reliably fire when the upstream HTTP server
+        # process is SIGSTOPped (kernel accepts the TCP handshake, our
+        # send completes into kernel buffer, recv() blocks > 5s instead
+        # of the expected 1s). Raw socket settimeout() works correctly.
+        import socket, urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(CFG["ord_url"])
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 80
+            s = socket.create_connection((host, port), timeout=1)
+            try:
+                s.settimeout(1)
+                s.sendall(b"GET /blockheight HTTP/1.1\r\nHost: " + host.encode()
+                          + b"\r\nAccept: application/json\r\nConnection: close\r\n\r\n")
+                buf = b""
+                while True:
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    if len(buf) > 8192:
+                        break
+                # Split headers and body. Take the LARGEST digit-only token
+                # so chunked-encoding size prefixes (small numbers) don't
+                # get confused with the actual height.
+                if b"\r\n\r\n" in buf:
+                    body = buf.split(b"\r\n\r\n", 1)[1].strip()
+                    candidates = []
+                    for line in body.split(b"\n"):
+                        token = line.strip()
+                        if token.isdigit():
+                            candidates.append(int(token))
+                    if candidates:
+                        ord_h = max(candidates)
+            finally:
+                s.close()
+        except (OSError, ValueError, TypeError):
+            pass
+    btc_h = None
+    try:
+        btc_h = int(bcli("getblockcount"))
+    except (RuntimeError, ValueError, TypeError):
+        pass
+    return {"ord_height": ord_h, "bitcoind_height": btc_h}
+
+
 def h_node_status():
     info = bcli("getblockchaininfo")
     net = {}
@@ -911,6 +974,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(lambda: self._send(h_config()))
         if p == "/api/node/status":
             return self._guard(lambda: self._send(h_node_status()))
+        if p == "/api/health":
+            return self._guard(lambda: self._send(h_health()))
         if p == "/api/wallet":
             return self._guard(lambda: self._send(h_wallet()))
         if p == "/api/wallet/transactions":

@@ -17,6 +17,7 @@ use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -44,6 +45,24 @@ const READY_WAIT_SECS: u64 = 240;
 const SHUTDOWN_GRACE_SECS: u64 = 10;
 const HEALTH_POLL_SECS: u64 = 3;
 const LOG_DIR_WSL: &str = "/tmp";
+
+// v0.2.8 ord wedge detector. ord occasionally stops polling bitcoind for
+// new blocks while its HTTP server stays up. The supervisor polls btxd's
+// /api/health endpoint (btxd runs inside WSL with full visibility — it
+// can reach ord and bitcoin-cli that wsl.exe bash -c "..." invocations
+// from Rust cannot, see the reference-wsl-subshell memory). When ord
+// lags bitcoind by more than ORD_WEDGE_GAP_THRESHOLD for longer than
+// ORD_WEDGE_DURATION_SECS, restart_one("ord") is called; v0.2.6's
+// embedded stale-lock recovery handles cleanup if needed.
+//
+// Only enabled on regtest where reindex is cheap (<10s for 200 blocks).
+// signet/mainnet keep manual recovery until the threshold is tuned for
+// legitimate cold-start reindex times.
+const ORD_WEDGE_POLL_SECS: u64 = 15;
+const ORD_WEDGE_GAP_THRESHOLD: u64 = 5;
+const ORD_WEDGE_DURATION_SECS: u64 = 60;
+const BTXD_HEALTH_URL_PATH: &str = "/api/health";
+const BTXD_PORT: u16 = 3333;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -97,10 +116,14 @@ pub struct DaemonRuntime {
 pub struct Supervisor {
     daemons: Arc<Mutex<HashMap<String, Arc<Mutex<DaemonRuntime>>>>>,
     shutting_down: Arc<Mutex<bool>>,
+    /// v0.2.8: whether to spawn the ord wedge detector at start_all time.
+    /// Set by make_specs_from_setup based on chain (true on regtest only
+    /// for v0.2.8; signet/mainnet keep manual recovery).
+    ord_wedge_detector_enabled: bool,
 }
 
 impl Supervisor {
-    pub fn new(specs: Vec<DaemonSpec>) -> Self {
+    pub fn new(specs: Vec<DaemonSpec>, ord_wedge_detector_enabled: bool) -> Self {
         let mut map = HashMap::new();
         for spec in specs {
             let name = spec.name.to_string();
@@ -119,6 +142,7 @@ impl Supervisor {
         Self {
             daemons: Arc::new(Mutex::new(map)),
             shutting_down: Arc::new(Mutex::new(false)),
+            ord_wedge_detector_enabled,
         }
     }
 
@@ -134,6 +158,79 @@ impl Supervisor {
             self.start_one(&name).await;
         }
         self.spawn_status_publisher();
+        if self.ord_wedge_detector_enabled {
+            self.spawn_ord_wedge_detector();
+        }
+    }
+
+    /// v0.2.8 ord wedge detector. Polls btxd's /api/health endpoint over
+    /// localhost:3333 every ORD_WEDGE_POLL_SECS to get ord's and bitcoind's
+    /// current block heights. When the gap exceeds ORD_WEDGE_GAP_THRESHOLD
+    /// for longer than ORD_WEDGE_DURATION_SECS, restart_one("ord") is called.
+    ///
+    /// Why poll btxd rather than ord/bitcoind directly via wsl.exe: see
+    /// the `reference-wsl-subshell` memory. `wsl.exe bash -c "..."`
+    /// invocations from Tauri's tokio process silently return empty for
+    /// $() subshells that touch network or RPC. btxd already runs inside
+    /// WSL with full daemon visibility, and the WebView already polls it
+    /// over :3333 — that path is proven to work end-to-end.
+    fn spawn_ord_wedge_detector(&self) {
+        let sup = self.clone();
+        let shutting_down = self.shutting_down.clone();
+        eprintln!("[wedge-detector] spawning (via btxd /api/health on :{BTXD_PORT})");
+        tokio::spawn(async move {
+            let mut wedge_since: Option<Instant> = None;
+            loop {
+                tokio::time::sleep(Duration::from_secs(ORD_WEDGE_POLL_SECS)).await;
+                if *shutting_down.lock().await {
+                    return;
+                }
+                // Skip if ord isn't currently Running. Avoids false-positive
+                // restarts during start/stop transitions.
+                let ord_state = match sup.lookup("ord").await {
+                    Some(arc) => arc.lock().await.state.clone(),
+                    None => {
+                        wedge_since = None;
+                        continue;
+                    }
+                };
+                if !matches!(ord_state, State::Running) {
+                    wedge_since = None;
+                    continue;
+                }
+                let (ord_h, btc_h) = match fetch_btxd_health().await {
+                    Some(pair) => pair,
+                    None => {
+                        // btxd unreachable or returned junk — transient.
+                        wedge_since = None;
+                        continue;
+                    }
+                };
+                let is_wedged = match (ord_h, btc_h) {
+                    (Some(o), Some(b)) => b.saturating_sub(o) > ORD_WEDGE_GAP_THRESHOLD,
+                    // ord null while bitcoind reports a height — ord HTTP
+                    // unresponsive, which is itself the wedge signature.
+                    (None, Some(_)) => true,
+                    _ => false,
+                };
+                if is_wedged {
+                    let since = *wedge_since.get_or_insert_with(Instant::now);
+                    if since.elapsed() >= Duration::from_secs(ORD_WEDGE_DURATION_SECS) {
+                        let ord_s = ord_h.map(|n| format!("h={n}")).unwrap_or_else(|| "unreachable".into());
+                        let btc_s = btc_h.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+                        eprintln!(
+                            "[supervisor] ord wedged ({ord_s}, bitcoind={btc_s}) \
+                             for {}s; restarting",
+                            since.elapsed().as_secs()
+                        );
+                        sup.restart_one("ord").await;
+                        wedge_since = None;
+                    }
+                } else {
+                    wedge_since = None;
+                }
+            }
+        });
     }
 
     /// Background task that serializes the current snapshot to a file
@@ -471,7 +568,12 @@ impl Supervisor {
 ///
 /// If `setup.datadir_override` is set, it wins over the chain default
 /// regardless of chain.
-pub fn make_specs_from_setup(setup: &crate::install::Setup) -> Vec<DaemonSpec> {
+/// Returns `(specs, enable_wedge_detector)`. The bool flag tells
+/// `Supervisor::new` whether to spawn the v0.2.8 ord wedge detector; only
+/// true on regtest where reindex on restart is cheap (~10s for 200 blocks).
+/// On signet/mainnet a legitimate cold-start reindex can run >60s and
+/// would trip ORD_WEDGE_DURATION_SECS as a false positive.
+pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>, bool) {
     let chain = setup.chain.as_deref().unwrap_or("signet");
     let wallet = setup.wallet.as_deref().unwrap_or("btx");
 
@@ -572,7 +674,7 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> Vec<DaemonSpec> {
         _ => "",
     };
 
-    vec![
+    let specs = vec![
         DaemonSpec {
             name: "bitcoind",
             wsl_command: format!(
@@ -648,14 +750,21 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> Vec<DaemonSpec> {
             ready_port: 3333,
             depends_on: vec!["bitcoind", "brk_cli", "ord"],
         },
-    ]
+    ];
+
+    // v0.2.8: wedge detector enabled only on regtest. signet/mainnet's
+    // legitimate cold-start reindex can exceed ORD_WEDGE_DURATION_SECS
+    // and trip a false positive; we keep those on manual recovery until
+    // the thresholds are tuned per chain.
+    let enable_wedge_detector = chain == "regtest";
+    (specs, enable_wedge_detector)
 }
 
 /// Back-compat shim — pre-M5b code referred to make_default_specs(). New
 /// code should call make_specs_from_setup(). Defaults to signet with
 /// wallet "btx" and no datadir override.
 pub fn make_default_specs() -> Vec<DaemonSpec> {
-    make_specs_from_setup(&crate::install::Setup::default())
+    make_specs_from_setup(&crate::install::Setup::default()).0
 }
 
 // ---- helpers ----
@@ -680,4 +789,39 @@ async fn check_port(port: u16) -> bool {
         timeout(Duration::from_millis(300), TcpStream::connect(&addr)).await,
         Ok(Ok(_))
     )
+}
+
+/// Fetch btxd's /api/health endpoint via raw HTTP/1.1 over TCP. Returns
+/// `(ord_height, bitcoind_height)` with each side independently None on
+/// parse/upstream failure (btxd already squashes daemon errors into
+/// nulls per field). Returns the outer None only on transport failure
+/// (no btxd, connect timeout, malformed HTTP) so the caller can treat
+/// the two cases differently.
+async fn fetch_btxd_health() -> Option<(Option<u64>, Option<u64>)> {
+    let addr = format!("127.0.0.1:{BTXD_PORT}");
+    let mut stream = timeout(Duration::from_secs(3), TcpStream::connect(&addr))
+        .await
+        .ok()?
+        .ok()?;
+    let req = format!(
+        "GET {BTXD_HEALTH_URL_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+    );
+    timeout(Duration::from_secs(3), stream.write_all(req.as_bytes()))
+        .await
+        .ok()?
+        .ok()?;
+    let mut buf = Vec::with_capacity(1024);
+    timeout(Duration::from_secs(3), stream.read_to_end(&mut buf))
+        .await
+        .ok()?
+        .ok()?;
+    let raw = String::from_utf8_lossy(&buf);
+    // Split headers from body at the first blank line.
+    let body_start = raw.find("\r\n\r\n").map(|i| i + 4)
+        .or_else(|| raw.find("\n\n").map(|i| i + 2))?;
+    let body = &raw[body_start..];
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let ord_h = v.get("ord_height").and_then(|x| x.as_u64());
+    let btc_h = v.get("bitcoind_height").and_then(|x| x.as_u64());
+    Some((ord_h, btc_h))
 }
