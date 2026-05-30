@@ -229,6 +229,29 @@ label{
   <label for="wallet-name">Wallet name</label>
   <input class="field" id="wallet-name" type="text" value="btx" maxlength="32">
 
+  <!-- Mainnet-only: existing-datadir picker (M5b.6).
+       Hidden by default; revealed when chain === "main" because mainnet
+       sync from scratch is not realistic on this hardware (proven last
+       week: ~0.3 blk/sec from /mnt/c, 2-7 day ETA). The supervisor
+       will spawn bitcoind with -datadir=<this> and skip its own data
+       directory creation. -->
+  <div id="mainnet-datadir-block" style="display:none; margin-top:18px">
+    <label for="datadir-override">Path to your existing Bitcoin Core data directory (WSL form)</label>
+    <input class="field" id="datadir-override" type="text"
+           placeholder="/mnt/c/Users/yourname/AppData/Roaming/Bitcoin"
+           autocomplete="off"
+           spellcheck="false">
+    <div class="note" style="font-size:11.5px;margin-top:8px">
+      <b>Why this is required for mainnet:</b> a fresh mainnet sync is
+      ~700&nbsp;GB and would take days from scratch. BTX will reuse
+      your existing fully-synced Bitcoin Core install. Point this at the
+      directory that contains <code>blocks/</code> and
+      <code>chainstate/</code> — typically
+      <code>%APPDATA%\Bitcoin</code> on Windows, expressed as
+      <code>/mnt/c/Users/&lt;you&gt;/AppData/Roaming/Bitcoin</code> in WSL.
+    </div>
+  </div>
+
   <div class="note">
     <b>What happens next:</b> BTX creates a Bitcoin Core wallet named
     <code id="wallet-preview">btx</code> on the selected network
@@ -303,6 +326,7 @@ const $ = id => document.getElementById(id);
 
 let chain = "signet";
 let walletName = "btx";
+let datadirOverride = "";
 
 // ===== Step 1: Network choice =====
 const netChoices = document.querySelectorAll("#net-choices .choice");
@@ -320,6 +344,13 @@ $("net-next").onclick = () => {
   $("step-1").classList.add("done");
   $("step-2").classList.add("on");
   $("chain-preview").textContent = chain;
+  // M5b.6: show the datadir picker only on mainnet.
+  $("mainnet-datadir-block").style.display = (chain === "main") ? "" : "none";
+};
+
+// Track typed datadir override.
+$("datadir-override").oninput = () => {
+  datadirOverride = $("datadir-override").value.trim();
 };
 
 // ===== Step 2: Wallet name =====
@@ -337,6 +368,22 @@ $("wallet-back").onclick = () => {
 };
 $("wallet-next").onclick = async () => {
   walletName = ($("wallet-name").value || "btx").trim();
+
+  // M5b.6: mainnet REQUIRES an existing datadir.
+  if (chain === "main") {
+    datadirOverride = ($("datadir-override").value || "").trim();
+    if (!datadirOverride) {
+      alert("Mainnet requires an existing Bitcoin Core datadir.\n\nEnter the WSL-form path (e.g. /mnt/c/Users/<you>/AppData/Roaming/Bitcoin) so BTX can reuse your already-synced chain. Syncing from scratch is not viable on this hardware.");
+      return;
+    }
+    if (!datadirOverride.startsWith("/")) {
+      alert("Path must be in WSL form (start with /, e.g. /mnt/c/...)");
+      return;
+    }
+  } else {
+    datadirOverride = "";
+  }
+
   $("card-2").style.display = "none";
   $("card-3").style.display = "";
   $("step-2").classList.remove("on");
@@ -442,7 +489,13 @@ $("enter-trade").onclick = async () => {
     await fetch("/api/setup/complete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chain, wallet: walletName }),
+      body: JSON.stringify({
+        chain,
+        wallet: walletName,
+        // M5b.6: only included when user picked mainnet (empty string
+        // otherwise; btxd treats empty as "use chain default").
+        datadir_override: datadirOverride || undefined,
+      }),
     });
   } catch (e) {
     console.error("setup/complete failed", e);

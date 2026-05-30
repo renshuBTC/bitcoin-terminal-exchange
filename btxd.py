@@ -205,23 +205,55 @@ def h_config():
 
 def h_setup_complete(body):
     """Write ~/.btx/setup.json marker so the Tauri shell knows future
-    launches skip the wizard. M4 of the bundle work. Body fields:
-    chain (str), wallet (str)."""
+    launches skip the wizard. M4 of the bundle work; M5b.6 adds
+    datadir_override for mainnet users pointing at an existing Bitcoin
+    Core install.
+
+    Body fields:
+        chain (str)              required: signet|main|mainnet|regtest|testnet
+        wallet (str)             required
+        datadir_override (str)   optional: WSL-form path to an existing
+                                 Bitcoin Core datadir; required for mainnet
+    """
     chain = (body.get("chain") or "signet").strip()
     wallet = (body.get("wallet") or "btx").strip()
+    datadir_override = (body.get("datadir_override") or "").strip()
+
     if chain not in ("signet", "main", "mainnet", "regtest", "testnet"):
         return {"error": "unknown chain"}, 400
     if not wallet or len(wallet) > 64 or any(c in wallet for c in "/\\: "):
         return {"error": "invalid wallet name"}, 400
+
+    # M5b.6: mainnet requires an explicit datadir override. Reject the
+    # marker write rather than letting the supervisor silently fall back
+    # to signet when bitcoind can't find a real mainnet chain.
+    if chain in ("main", "mainnet") and not datadir_override:
+        return {"error": "mainnet requires datadir_override (path to existing Bitcoin Core datadir)"}, 400
+
+    # Sanity-check the override is a WSL-form absolute path with no shell
+    # metacharacters. The supervisor wraps this value unquoted inside a
+    # bash -c "..." command line, so anything that could break out of the
+    # token boundary is forbidden.
+    if datadir_override:
+        if not datadir_override.startswith("/"):
+            return {"error": "datadir_override must be a WSL absolute path (start with /)"}, 400
+        forbidden = "\x00`$\"';|&<>(){}*?[]\\\n\r"
+        if any(c in datadir_override for c in forbidden):
+            return {"error": "datadir_override contains forbidden characters"}, 400
+
     setup_dir = os.path.expanduser("~/.btx")
     try:
         os.makedirs(setup_dir, exist_ok=True)
         marker = os.path.join(setup_dir, "setup.json")
         import json as _json
+        payload = {"chain": chain, "wallet": wallet,
+                   "completed_at": int(time.time())}
+        if datadir_override:
+            payload["datadir_override"] = datadir_override
         with open(marker, "w") as f:
-            _json.dump({"chain": chain, "wallet": wallet,
-                        "completed_at": int(time.time())}, f)
-        return {"ok": True, "chain": chain, "wallet": wallet}, 200
+            _json.dump(payload, f)
+        return {"ok": True, "chain": chain, "wallet": wallet,
+                "datadir_override": datadir_override or None}, 200
     except OSError as e:
         return {"error": f"failed to write marker: {e}"}, 500
 

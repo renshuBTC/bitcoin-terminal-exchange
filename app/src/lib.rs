@@ -2,17 +2,21 @@
 //
 // M1: native window opens loading http://127.0.0.1:3333.
 // M2: shell spawns btxd via btx-launch.sh on launch, stops on close.
-// M3 (this file): per-daemon supervisor. The launcher shell-out is gone;
-//   the Rust supervisor now spawns bitcoind, brk_cli, ord, btxd as four
-//   separate WSL subprocesses in dependency order, monitors them, and
-//   restarts on crash. New IPC commands for status/logs feed the
-//   btx_daemons.html debug pane.
+// M3: per-daemon supervisor. The launcher shell-out is gone; the Rust
+//   supervisor spawns bitcoind, brk_cli, ord, btxd as four separate
+//   WSL subprocesses in dependency order, monitors them, and restarts
+//   on crash. IPC commands for status/logs feed btx_daemons.html.
 // M4: first-launch wizard.
-// M5: Windows installer.
+// M5a: Windows NSIS installer (shell + supervisor only).
+// M5b (this file's latest pass): self-contained installer — bundled
+//   Linux binaries copied into ~/.btx/bin on first launch by
+//   install::install_bundled_assets(), daemon specs read from the
+//   user's persisted ~/.btx/setup.json instead of hardcoded dev paths.
 
 use std::sync::Arc;
 use tauri::Manager;
 
+mod install;
 mod supervisor;
 use supervisor::Supervisor;
 
@@ -20,7 +24,18 @@ struct SupervisorState(Arc<Supervisor>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let sup = Arc::new(Supervisor::new(supervisor::make_default_specs()));
+    // M5b.4: read the user's persisted setup synchronously so the
+    // Supervisor is built with the right chain/wallet/datadir from the
+    // start. Costs ~300ms cold for a wsl.exe round-trip; acceptable at
+    // process boot. First-launch users get Setup::default() (signet,
+    // wallet "btx", no datadir override).
+    let setup = install::load_setup_sync();
+    eprintln!(
+        "[btx-app] setup: chain={:?} wallet={:?} datadir_override={:?}",
+        setup.chain, setup.wallet, setup.datadir_override
+    );
+
+    let sup = Arc::new(Supervisor::new(supervisor::make_specs_from_setup(&setup)));
     let sup_for_setup = sup.clone();
     let sup_for_state = sup.clone();
     let sup_for_close = sup.clone();
@@ -32,6 +47,23 @@ pub fn run() {
             let sup = sup_for_setup.clone();
 
             tauri::async_runtime::spawn(async move {
+                // M5b.3: copy bundled binaries + Python + HTML into
+                // ~/.btx/bin and ~/.btx/app before any daemon starts.
+                // Idempotent across runs via ~/.btx/.installed-v<ver>.
+                match app_handle.path().resource_dir() {
+                    Ok(resources_dir) => {
+                        eprintln!("[btx-app] resource dir: {}", resources_dir.display());
+                        if let Err(e) = install::install_bundled_assets(resources_dir).await {
+                            eprintln!("[btx-app] install_bundled_assets failed: {e}");
+                            // Continue anyway — start_all will surface the
+                            // spawn failures in the daemon pane.
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[btx-app] cannot resolve resource dir: {e}");
+                    }
+                }
+
                 eprintln!("[btx-app] M3 supervisor starting daemon stack…");
                 sup.start_all().await;
                 eprintln!("[btx-app] daemon stack up; reloading webview");

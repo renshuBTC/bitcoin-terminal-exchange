@@ -1,0 +1,13 @@
+# BTX bundle binary manifest — generated 2026-05-30T06:58:38Z
+# Built by: ren_shu@renshu
+# Host: Linux 6.6.87.2-microsoft-standard-WSL2 x86_64
+
+bitcoind     : Bitcoin Core daemon version v29.1.0
+bitcoin-cli  : Bitcoin Core RPC client version v29.1.0
+brk_cli      : brk 0.3.0-beta.9
+ord          : ord 0.27.1
+
+Sources:
+  Bitcoin Core : /home/ren_shu/bitcoin-29.1
+  brk_cli      : /mnt/c/Users/Ren Shu/Documents/Claude/Projects/brk-btx (cargo build --release -p brk_cli)
+  ord          : /home/ren_shu/bin/ord

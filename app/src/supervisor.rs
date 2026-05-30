@@ -456,54 +456,140 @@ impl Supervisor {
     }
 }
 
-/// Build the standard 4-daemon spec for signet.
-/// All paths are hardcoded for the dev box; M3 ships in this state,
-/// M4/M5 read from a config file written by the first-launch wizard.
-pub fn make_default_specs() -> Vec<DaemonSpec> {
-    let project_dir_wsl = "/mnt/c/Users/Ren Shu/Documents/Claude/Projects/bitcoin-terminal-exchange";
-    let brk_dir_wsl = "/mnt/c/Users/Ren Shu/Documents/Claude/Projects/brk-btx";
-    let bin = "$HOME/bitcoin-29.1/bin";
-    let datadir = "$HOME/sig-public";
+/// Build the 4-daemon spec from the user's persisted setup.
+///
+/// M3 hardcoded everything for the dev box. M5b reads chain + wallet +
+/// optional external datadir from `~/.btx/setup.json` (populated by the
+/// first-launch wizard), uses bundled binaries from `~/.btx/bin/`
+/// installed by `install::install_bundled_assets()`, and runs btxd from
+/// `~/.btx/app/` (a freshly-installed BTX has no project checkout).
+///
+/// Chain → datadir defaults:
+///   signet    → $HOME/.btx/data/signet     (pruned 2GB)
+///   regtest   → $HOME/.btx/data/regtest    (no prune)
+///   mainnet   → $datadir_override required (we don't sync from scratch)
+///
+/// If `setup.datadir_override` is set, it wins over the chain default
+/// regardless of chain.
+pub fn make_specs_from_setup(setup: &crate::install::Setup) -> Vec<DaemonSpec> {
+    let chain = setup.chain.as_deref().unwrap_or("signet");
+    let wallet = setup.wallet.as_deref().unwrap_or("btx");
+
+    // Resolve datadir.
+    let datadir: String = match (chain, setup.datadir_override.as_deref()) {
+        (_, Some(d)) => d.to_string(),
+        ("signet", None) => "$HOME/.btx/data/signet".to_string(),
+        ("regtest", None) => "$HOME/.btx/data/regtest".to_string(),
+        ("main" | "mainnet", None) => {
+            // No override and no default — fall back to signet so the bundle
+            // doesn't try to sync a 700GB chain from a clean state.
+            // The wizard requires the user to pick an existing datadir
+            // before completing setup, so this branch is the safety net.
+            eprintln!(
+                "[supervisor] WARNING: mainnet selected but no datadir_override; \
+                 falling back to signet to protect the user's disk"
+            );
+            "$HOME/.btx/data/signet".to_string()
+        }
+        _ => "$HOME/.btx/data/signet".to_string(),
+    };
+
+    // Bitcoin Core chain-network flag + RPC port.
+    let (chain_flag, rpc_port, prune_arg) = match chain {
+        "signet" => ("-signet", 38332u16, "-prune=2000"),
+        "regtest" => ("-regtest", 18443, "-prune=0"),
+        "main" | "mainnet" => ("", 8332, ""),
+        _ => ("-signet", 38332, "-prune=2000"),
+    };
+
+    // Bitcoin Core data subdir for blocks/cookie (differs by chain).
+    let subdir = match chain {
+        "signet" => "signet",
+        "regtest" => "regtest",
+        "main" | "mainnet" => "",
+        _ => "signet",
+    };
+    let blocks_path = if subdir.is_empty() {
+        format!("{datadir}/blocks")
+    } else {
+        format!("{datadir}/{subdir}/blocks")
+    };
+    let cookie_path = if subdir.is_empty() {
+        format!("{datadir}/.cookie")
+    } else {
+        format!("{datadir}/{subdir}/.cookie")
+    };
+
+    // ord chain flag — ord uses different flag names than bitcoind.
+    let ord_chain_flag = match chain {
+        "signet" => "--chain signet",
+        "regtest" => "--regtest",
+        "main" | "mainnet" => "",
+        _ => "--chain signet",
+    };
+
+    // brk_cli's chain magic. brk-btx pins these per chain in BRK_BLOCK_MAGIC
+    // env var; 0a03cf40 is the signet magic baked into the project today.
+    let brk_block_magic = match chain {
+        "signet" => "0a03cf40",
+        "regtest" => "fabfb5da",
+        "main" | "mainnet" => "f9beb4d9",
+        _ => "0a03cf40",
+    };
+
+    // Per-chain BRK index dir to avoid mixing chains in the same store.
+    let brk_dir = format!("$HOME/.btx/brk-{chain}");
+
+    // pkill -f patterns can match the supervisor's own grep, so we match on
+    // the binary basename when possible.
+    let bitcoind_pruning = if prune_arg.is_empty() {
+        "".to_string()
+    } else {
+        format!(" {prune_arg}")
+    };
+
+    // Note: -txindex is incompatible with -prune. BTX needs neither for
+    // signet smoke flows (mempool decode + cookie auth work without txindex),
+    // so we omit txindex when pruning. Mainnet users with an existing
+    // datadir get whatever Core was already configured with.
 
     vec![
         DaemonSpec {
             name: "bitcoind",
             wsl_command: format!(
-                "exec {bin}/bitcoind -signet -datadir={datadir} \
-                 -txindex=1 -datacarrier=1 -datacarriersize=240 \
+                "mkdir -p {datadir} && \
+                 exec $HOME/.btx/bin/bitcoind {chain_flag} -datadir={datadir}{bitcoind_pruning} \
+                 -datacarrier=1 -datacarriersize=240 \
                  -fallbackfee=0.0002 -dbcache=300 -server -printtoconsole \
                  > {LOG_DIR_WSL}/btx-bitcoind.log 2>&1"
             ),
             stop_pattern: "pkill -SIG -x bitcoind".to_string(),
-            ready_port: 38332,
+            ready_port: rpc_port,
             depends_on: vec![],
         },
         DaemonSpec {
             name: "brk_cli",
-            // Explicit cargo path: wsl.exe bash -c "..." is a non-interactive
-            // shell that doesn't source ~/.bashrc, so cargo isn't on PATH.
-            // Same for ord below.
             wsl_command: format!(
-                "cd '{brk_dir_wsl}' && BRK_BLOCK_MAGIC=0a03cf40 \
-                 exec $HOME/.cargo/bin/cargo run -p brk_cli -- \
-                 --brkdir $HOME/brk-btx-signet \
-                 --blocksdir {datadir}/signet/blocks \
-                 --rpcconnect 127.0.0.1 --rpcport 38332 \
-                 --rpccookiefile {datadir}/signet/.cookie \
+                "mkdir -p {brk_dir} && BRK_BLOCK_MAGIC={brk_block_magic} \
+                 exec $HOME/.btx/bin/brk_cli \
+                 --brkdir {brk_dir} \
+                 --blocksdir {blocks_path} \
+                 --rpcconnect 127.0.0.1 --rpcport {rpc_port} \
+                 --rpccookiefile {cookie_path} \
                  --brkport 3140 \
                  > {LOG_DIR_WSL}/btx-brk_cli.log 2>&1"
             ),
-            // brk_cli's real process is `brk` (cargo wraps it). Kill both.
-            stop_pattern: "pkill -SIG -f 'brk_cli|cargo run -p brk_cli'; pkill -SIG -x brk".to_string(),
+            stop_pattern: "pkill -SIG -x brk_cli; pkill -SIG -x brk".to_string(),
             ready_port: 3140,
             depends_on: vec!["bitcoind"],
         },
         DaemonSpec {
             name: "ord",
             wsl_command: format!(
-                "exec $HOME/bin/ord --chain signet \
+                "mkdir -p {datadir}/ord && \
+                 exec $HOME/.btx/bin/ord {ord_chain_flag} \
                  --bitcoin-data-dir {datadir} \
-                 --cookie-file {datadir}/signet/.cookie \
+                 --cookie-file {cookie_path} \
                  --data-dir {datadir}/ord \
                  --index-runes server --http-port 3349 \
                  > {LOG_DIR_WSL}/btx-ord.log 2>&1"
@@ -515,9 +601,9 @@ pub fn make_default_specs() -> Vec<DaemonSpec> {
         DaemonSpec {
             name: "btxd",
             wsl_command: format!(
-                "cd '{project_dir_wsl}' && exec python3 btxd.py \
-                 --bitcoin-cli {bin}/bitcoin-cli --chain signet \
-                 --datadir {datadir} --wallet btx \
+                "cd $HOME/.btx/app && exec python3 btxd.py \
+                 --bitcoin-cli $HOME/.btx/bin/bitcoin-cli --chain {chain} \
+                 --datadir {datadir} --wallet {wallet} \
                  --brk-url http://127.0.0.1:3140 \
                  --ord-url http://127.0.0.1:3349 \
                  --port 3333 \
@@ -528,6 +614,13 @@ pub fn make_default_specs() -> Vec<DaemonSpec> {
             depends_on: vec!["bitcoind", "brk_cli", "ord"],
         },
     ]
+}
+
+/// Back-compat shim — pre-M5b code referred to make_default_specs(). New
+/// code should call make_specs_from_setup(). Defaults to signet with
+/// wallet "btx" and no datadir override.
+pub fn make_default_specs() -> Vec<DaemonSpec> {
+    make_specs_from_setup(&crate::install::Setup::default())
 }
 
 // ---- helpers ----
