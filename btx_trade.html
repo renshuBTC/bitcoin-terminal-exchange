@@ -398,29 +398,29 @@
     <div class="panel-modes">
       <button class="mode on" id="mode-open" onclick="setPanel('publish')">Open · 0x83</button>
       <button class="mode" id="mode-addr" onclick="setPanel('otc')">Addressed · PSBT</button>
-      <button class="mode" id="mode-rune" onclick="setPanel('rune')">Rune↔Rune</button>
     </div>
     <div class="tabs">
       <button class="tab on" data-p="publish" onclick="setPanel('publish')">Publish</button>
       <button class="tab" data-p="fill" onclick="setPanel('fill')">Fill</button>
-      <button class="tab" data-p="etch" onclick="setPanel('etch')">Etch</button>
       <button class="tab" data-p="otc" onclick="setPanel('otc')">OTC</button>
-      <button class="tab" data-p="rune" onclick="setPanel('rune')">R↔R</button>
     </div>
 
     <!-- PUBLISH -->
     <div id="p-publish">
       <div class="bs">
-        <button class="on sell-rune">Sell rune</button>
-        <button class="buy-rune">Buy rune</button>
+        <button class="on sell-rune">Sell stablecoin</button>
+        <button class="buy-rune">Buy stablecoin</button>
       </div>
       <label>Offer UTXO (P2WPKH coin)</label>
       <select id="o_utxo"><option value="">— refresh wallet —</option></select>
       <label>Price (BTC taker pays)</label>
       <input id="o_price" value="0.001">
-      <label>Counter-asset rune id (block:tx)</label>
-      <input id="o_rune" placeholder="blank = BTC-only · e.g. 131:1">
-      <label>Rune amount (base units)</label>
+      <label>Stablecoin</label>
+      <select id="o_rune">
+        <option value="" selected>USDh · BTC-backed</option>
+        <option value="131:1">Ducat · BTC-backed</option>
+      </select>
+      <label>Stablecoin amount (base units)</label>
       <input id="o_amount" value="1000">
       <label>Carrier</label>
       <select id="o_carrier"><option value="op_return">OP_RETURN</option><option value="envelope">Taproot envelope</option></select>
@@ -438,42 +438,24 @@
       <div class="msg" id="f_msg"></div>
     </div>
 
-    <!-- ETCH -->
-    <div id="p-etch" style="display:none">
-      <label>Premine (base units)</label>
-      <input id="e_amount" value="1000">
-      <button class="act" id="e_btn" onclick="etchRune()">Etch a test rune (regtest)</button>
-      <div class="note">regtest-only — mines commit + 6 + reveal. On signet/mainnet, etch out-of-band via btx_etch.</div>
-      <div class="msg" id="e_msg"></div>
-    </div>
-
     <!-- OTC ADDRESSED -->
     <div id="p-otc" style="display:none">
       <div class="note" style="margin:0 0 8px">Snipe-resistant addressed swap (BIP-174 PSBT, 2 parties). Taker proposes → maker verifies output 0 &amp; countersigns SIGHASH_ALL. No relay.</div>
       <label>Offer UTXO (txid:vout)</label><input id="a_offer" placeholder="txid:vout">
       <label>Price (sats) · Maker addr</label>
       <div class="seg"><input id="a_price" value="10000"><input id="a_maker" placeholder="bcrt1…/tb1…"></div>
-      <label>Rune id (block:tx) · amount</label>
-      <div class="seg"><input id="a_rune" placeholder="131:1"><input id="a_amt" value="1000"></div>
+      <label>Stablecoin · amount</label>
+      <div class="seg">
+        <select id="a_rune">
+          <option value="" selected>USDh</option>
+          <option value="131:1">Ducat</option>
+        </select>
+        <input id="a_amt" value="1000">
+      </div>
       <button class="act sec" onclick="proposeSwap()">Taker: build PSBT</button>
       <label>PSBT</label><input id="a_psbt" placeholder="paste / generated">
       <button class="act" onclick="countersignSwap()">Maker: verify, sign &amp; broadcast</button>
       <div class="msg" id="a_msg"></div>
-    </div>
-
-    <!-- RUNE↔RUNE -->
-    <div id="p-rune" style="display:none">
-      <div class="note" style="margin:0 0 8px">The only trustless rune↔rune path: maker signs SIGHASH_ALL over the whole tx, verifying via ord that output 0 receives the counter-rune before countersigning.</div>
-      <label>Offer UTXO holding rune A (txid:vout)</label><input id="r_offer" placeholder="txid:vout">
-      <label>Rune A you SELL (block:tx) · amount</label>
-      <div class="seg"><input id="r_rune_a" placeholder="326:1"><input id="r_amt_a" value="5000"></div>
-      <label>Rune B you RECEIVE (block:tx) · amount</label>
-      <div class="seg"><input id="r_rune_b" placeholder="334:1"><input id="r_amt_b" value="2000"></div>
-      <label>Maker receive address (gets rune B at output 0)</label><input id="r_maker" placeholder="bcrt1…/tb1…">
-      <button class="act sec" onclick="proposeRuneSwap()">Taker: build PSBT</button>
-      <label>PSBT</label><input id="r_psbt" placeholder="paste / generated">
-      <button class="act" onclick="countersignRuneSwap()">Maker: verify rune B, sign &amp; broadcast</button>
-      <div class="msg" id="r_msg"></div>
     </div>
 
     <!-- TRADE-PANEL FOOTER STATS (Hyperliquid-style)
@@ -610,7 +592,7 @@ async function jget(p){const r=await fetch(p);const j=await r.json();if(!r.ok||j
 async function jpost(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.detail||j.error||('HTTP '+r.status));return j;}
 const op=s=>{const i=(s||'').trim().lastIndexOf(':');return i<1?null:{txid:s.trim().slice(0,i),vout:parseInt(s.trim().slice(i+1),10)};};
 
-function setPanel(p){['publish','fill','etch','otc','rune'].forEach(x=>{$('p-'+x).style.display=x===p?'':'none';});
+function setPanel(p){['publish','fill','otc'].forEach(x=>{const el=$('p-'+x);if(el)el.style.display=x===p?'':'none';});
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.p===p));}
 let BOTTOM='orders', LAST={orders:[],mempool:[],trades:[],wallet:null}, TIP=0;
 // confirmations badge for a confirmed event at block `h`; mainnet finality is depth, not 1-conf.
@@ -980,15 +962,12 @@ setInterval(refreshBtcChart, 60000);
   const origSetPanel = window.setPanel;
   window.setPanel = function(p){
     origSetPanel(p);
-    const open = (p==='publish'||p==='fill'||p==='etch');
+    const open = (p==='publish'||p==='fill');
     const addr = (p==='otc');
-    const rr   = (p==='rune');
     const mo = document.getElementById('mode-open');
     const ma = document.getElementById('mode-addr');
-    const mr = document.getElementById('mode-rune');
     if(mo) mo.classList.toggle('on', open);
     if(ma) ma.classList.toggle('on', addr);
-    if(mr) mr.classList.toggle('on', rr);
   };
   // Buy/Sell-rune toggle (visual only on publish — the form still works the same way the previous UI did)
   document.querySelectorAll('#p-publish .bs button').forEach(btn => {
