@@ -349,7 +349,13 @@ impl Supervisor {
 
         let (stop_pattern, port) = {
             let mut rt = arc.lock().await;
-            if matches!(rt.state, State::Stopped | State::Dead) {
+            // v0.2.11: include State::Stopping in the early-return set.
+            // Without it, a second CloseRequested mid-shutdown re-fires
+            // SIGTERM at daemons that are already in stop_one's grace
+            // window — we'd see duplicate "stopping btxd…/btxd: SIGTERM"
+            // log lines on window-X close. With it, the second invocation
+            // no-ops cleanly and the first invocation runs to completion.
+            if matches!(rt.state, State::Stopped | State::Dead | State::Stopping) {
                 return;
             }
             rt.state = State::Stopping;
