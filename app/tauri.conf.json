@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "frontendDist": "../"
+    "frontendDist": "./dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -34,16 +34,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
       "icons/icon.ico"
     ],
     "category": "Finance",
     "shortDescription": "Bitcoin onchain exchange + wallet, all in one app",
-    "longDescription": "BTX is a unified Bitcoin Layer 1 application. Bitcoin Core, the BRK indexer, ord oracle, and the BTX trading terminal — bundled into one installable program. Self-custody, no off-chain order book, no third-party server."
+    "longDescription": "BTX is a unified Bitcoin Layer 1 application. Bitcoin Core, the BRK indexer, ord oracle, and the BTX trading terminal — bundled into one installable program. Self-custody, no off-chain order book, no third-party server.",
+    "copyright": "© 2026 renshuBTC",
+    "publisher": "renshuBTC",
+    "homepage": "https://github.com/renshuBTC/bitcoin-terminal-exchange"
   }
 }

@@ -103,10 +103,13 @@ fn ping() -> String {
 /// Returns true if it does NOT exist (= first launch).
 async fn check_first_launch() -> bool {
     let cmd = "test -f $HOME/.btx/setup.json && echo yes || echo no";
-    let output = tokio::process::Command::new("wsl.exe")
-        .args(["bash", "-c", cmd])
-        .output()
-        .await;
+    // CREATE_NO_WINDOW (0x08000000) suppresses the console window flash
+    // when invoked from a release-mode .exe with no parent console.
+    #[allow(unused_mut)]
+    let mut command = tokio::process::Command::new("wsl.exe");
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000);
+    let output = command.args(["bash", "-c", cmd]).output().await;
     match output {
         Ok(out) => {
             let s = String::from_utf8_lossy(&out.stdout);

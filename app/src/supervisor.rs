@@ -22,6 +22,21 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 
+/// Build a tokio::process::Command for wsl.exe that does NOT pop a
+/// console window on Windows. When btx-app runs from `cargo tauri dev`
+/// it has a parent console anyway, but the released .exe doesn't —
+/// without this flag every WSL subprocess spawns its own cmd.exe
+/// window. CREATE_NO_WINDOW = 0x08000000.
+fn wsl_command() -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new("wsl.exe");
+    // tokio::process::Command exposes creation_flags as a direct method
+    // on Windows targets — no trait import needed.
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd
+}
+
 const MAX_FAILURES: u32 = 5;
 // brk_cli may do an incremental cargo rebuild on first start; budget
 // generously for that. Subsequent starts are fast (cached).
@@ -147,7 +162,7 @@ impl Supervisor {
                 let cmd = format!(
                     "cat > /tmp/btx-supervisor.json <<'BTXJSONEOF'\n{body}\nBTXJSONEOF\n"
                 );
-                let _ = tokio::process::Command::new("wsl.exe")
+                let _ = wsl_command()
                     .args(["bash", "-c", &cmd])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -186,7 +201,7 @@ impl Supervisor {
 
         // Fire-and-forget WSL subprocess. Output is redirected inside
         // WSL to /tmp/btx-<name>.log so we can read it later.
-        let spawn_res = Command::new("wsl.exe")
+        let spawn_res = wsl_command()
             .args(["bash", "-c", &cmd_str])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -248,7 +263,7 @@ impl Supervisor {
         // Graceful: SIGTERM.
         let term_cmd = stop_pattern.replace("SIG", "TERM");
         eprintln!("[supervisor] {name}: SIGTERM");
-        let _ = Command::new("wsl.exe")
+        let _ = wsl_command()
             .args(["bash", "-c", &term_cmd])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -267,7 +282,7 @@ impl Supervisor {
         if check_port(port).await {
             let kill_cmd = stop_pattern.replace("SIG", "KILL");
             eprintln!("[supervisor] {name}: SIGKILL");
-            let _ = Command::new("wsl.exe")
+            let _ = wsl_command()
                 .args(["bash", "-c", &kill_cmd])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -322,7 +337,7 @@ impl Supervisor {
     pub async fn get_logs(&self, name: &str, n: usize) -> Vec<String> {
         let log_path = format!("{LOG_DIR_WSL}/btx-{name}.log");
         let cmd = format!("tail -n {n} '{log_path}' 2>/dev/null");
-        let output = Command::new("wsl.exe")
+        let output = wsl_command()
             .args(["bash", "-c", &cmd])
             .output()
             .await;
