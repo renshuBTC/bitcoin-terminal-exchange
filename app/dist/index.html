@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BTX — loading</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #000; color: #d4d4d4;
+               font-family: 'Source Code Pro', Consolas, Menlo, monospace; }
+  body { display: flex; align-items: center; justify-content: center;
+         flex-direction: column; gap: 18px; padding: 20px; box-sizing: border-box; }
+  .logo { width: 56px; height: 56px; border-radius: 8px;
+          background: linear-gradient(135deg, #ff8c00 60%, #ffaa33 100%);
+          box-shadow: 0 0 24px rgba(255, 140, 0, .3); }
+  .title { font-size: 16px; letter-spacing: .8px; text-transform: uppercase;
+           color: #fff; font-weight: 700; font-family: 'Roboto Condensed', system-ui, sans-serif; }
+  .sub { font-size: 12px; color: #d4d4d4; text-align: center; max-width: 480px; line-height: 1.6 }
+  .hint { font-size: 11px; color: #666; text-align: center; max-width: 480px;
+          margin-top: 8px; line-height: 1.5 }
+  .dots::after { content: ''; display: inline-block; width: 12px; text-align: left;
+                 animation: dots 1.4s infinite steps(4, end); }
+  @keyframes dots { 0% { content: '' } 25% { content: '.' } 50% { content: '..' } 75% { content: '...' } }
+  .bar { width: 220px; height: 2px; background: #1a1a1a; border-radius: 1px; overflow: hidden; margin-top: 6px; }
+  .bar::after { content: ''; display: block; height: 100%; width: 35%;
+                background: linear-gradient(90deg, #ff8c00, #ffaa33);
+                animation: slide 1.6s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(540%) } }
+</style>
+</head>
+<body>
+  <div class="logo"></div>
+  <div class="title">BTX — Bitcoin Onchain Exchange</div>
+  <div class="bar"></div>
+  <div class="sub"><span class="dots">Starting Bitcoin daemon stack</span></div>
+  <div class="hint">
+    Bringing up bitcoind, ord, brk_cli, and btxd inside WSL.
+    First launch on a fresh signet datadir takes ~30-60 seconds;
+    subsequent launches are faster.
+  </div>
+</body>
+</html>
