@@ -156,8 +156,9 @@ main{ display:grid; grid-template-columns: minmax(420px, 1.4fr) minmax(380px, 1f
       <span class="sub">tx history</span>
     </h3>
     <div class="empty" style="padding:36px 14px">
-      <p style="margin-bottom:10px">A merged BTC tx + BTX swap history view is on the roadmap (task #227).</p>
-      <p style="font-size:10.5px;color:var(--dim)">For now: <a href="/btx_trades.html" style="color:var(--orange)">/btx_trades.html</a> shows on-chain BTX fills; <code style="background:var(--panel);padding:1px 5px;border-radius:2px">listtransactions</code> via bitcoin-cli shows generic BTC tx history until btxd grows an endpoint for it.</p>
+      <p style="margin-bottom:10px">Full history lives at <a href="/btx_activity.html" style="color:var(--orange)">/btx_activity.html</a> —
+         merged BTC wallet history + BTX on-chain fills with type filters.</p>
+      <p style="font-size:10.5px;color:var(--dim)">For just on-chain BTX swap activity (separate from your wallet's BTC tx history), see <a href="/btx_trades.html" style="color:var(--orange)">/btx_trades.html</a>.</p>
     </div>
   </div>
 
