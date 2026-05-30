@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — wallet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap">
+<style>
+:root{
+  --bg:#000; --fg:#d4d4d4; --fg-bright:#fff;
+  --muted:#888; --dim:#666;
+  --border:#2a2a2a; --border-soft:#1f1f1f;
+  --hover:#1a1a1a; --panel:#0d0d0d;
+  --line-strong:#555;
+  --orange:#ff8c00; --orange-bright:#ffaa33;
+  --red:#f0616d; --red-bg:#1a0e0e; --red-border:#5e2e34;
+  --green:#26a69a; --green-bg:#0e1a16; --green-border:#1a4940;
+  --font-mono:'Source Code Pro', Consolas, Menlo, monospace;
+  --font-display:'Roboto Condensed', system-ui, sans-serif;
+}
+*{margin:0; padding:0; box-sizing:border-box}
+::selection{ background:var(--orange); color:#000 }
+html,body{ height:100%; background:var(--bg); color:var(--fg); font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums; line-height:1.45 }
+button{ font-family:inherit; cursor:pointer }
+a{ color:var(--fg); text-decoration:none }
+
+.nav{ display:flex; align-items:center; gap:8px; padding:8px 14px; background:var(--bg); border-bottom:1px solid var(--border) }
+.logo{ display:flex; align-items:center; gap:8px; font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--fg-bright); text-transform:uppercase; letter-spacing:.8px; padding:0 10px 0 2px }
+.logo::before{ content:""; display:inline-block; width:18px; height:18px; background:var(--orange); border-radius:3px; background-image:linear-gradient(135deg, var(--orange) 60%, var(--orange-bright) 100%) }
+.navlinks{ display:flex; gap:2px; margin-left:6px }
+.navlinks a{ color:var(--fg); padding:6px 12px; font-size:12px; border-radius:3px; text-transform:uppercase; letter-spacing:.5px; cursor:pointer }
+.navlinks a:hover{ background:var(--hover); color:var(--fg-bright) }
+.navlinks a.on{ background:var(--hover); color:var(--fg-bright) }
+.navright{ margin-left:auto; display:flex; align-items:center; gap:6px }
+.pill{ display:inline-flex; align-items:center; background:var(--hover); color:var(--fg); border:1px solid var(--line-strong); border-radius:2px; height:28px; padding:0 10px; font-size:11px; text-transform:uppercase; letter-spacing:.5px; line-height:26px }
+.pill.ok  { color:var(--green); border-color:#2c5e57 }
+.pill.bad { color:var(--red); border-color:var(--red-border) }
+.pill.warn{ color:var(--orange); border-color:#7a4b13 }
+
+.stats{ display:flex; align-items:center; gap:24px; padding:11px 16px; background:var(--bg); border-bottom:1px solid var(--border); overflow-x:auto; white-space:nowrap }
+.walletsel{ display:flex; align-items:center; gap:10px; padding-right:20px; border-right:1px solid var(--border) }
+.walletsel .name{ font-family:var(--font-display); font-weight:700; font-size:16px; color:var(--fg-bright); letter-spacing:.5px }
+.walletsel .chip{ background:var(--orange); color:#000; border-radius:2px; padding:2px 7px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px }
+.metric{ display:flex; flex-direction:column; gap:2px; min-width:max-content }
+.metric .l{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px }
+.metric .v{ font-size:13px; color:var(--fg) }
+.metric .v.g{ color:var(--green) }
+.metric .v.big{ font-size:20px; font-family:var(--font-display); font-weight:700; color:var(--fg-bright); letter-spacing:.4px }
+.metric .v.small{ font-size:11.5px }
+
+main{ display:grid; grid-template-columns: minmax(420px, 1.4fr) minmax(380px, 1fr); gap:1px; background:var(--border); min-height:calc(100vh - 105px - 240px) }
+.card{ background:var(--bg); padding:14px 16px; display:flex; flex-direction:column; min-width:0 }
+.card h3{ margin:0 0 12px; font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; display:flex; justify-content:space-between; align-items:baseline }
+.card h3 .sub{ font-size:10px; color:var(--dim); font-weight:400; text-transform:none; letter-spacing:0 }
+.empty{ color:var(--dim); text-align:center; padding:30px 14px; font-size:11.5px; line-height:1.6 }
+
+.asset{ display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; padding:14px; border:1px solid var(--border-soft); border-radius:2px; margin-bottom:10px; background:var(--panel) }
+.asset:hover{ border-color:var(--line-strong) }
+.asset .left{ display:flex; align-items:center; gap:14px; min-width:0 }
+.asset .icon{ width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:700; font-size:18px; color:#000; flex-shrink:0 }
+.asset .icon.btc{ background:var(--orange) }
+.asset .icon.usdh{ background:var(--green) }
+.asset .meta{ display:flex; flex-direction:column; min-width:0 }
+.asset .name{ font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--fg-bright); text-transform:uppercase; letter-spacing:.4px }
+.asset .sub{ font-size:10.5px; color:var(--muted); margin-top:1px }
+.asset .balance{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; margin-right:14px }
+.asset .amount{ font-size:18px; color:var(--fg-bright); font-weight:500 }
+.asset .value{ font-size:11.5px; color:var(--muted) }
+.asset .actions{ display:flex; gap:6px }
+.asset .actions button{ background:transparent; color:var(--fg); border:1px solid var(--border); border-radius:2px; padding:6px 11px; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px }
+.asset .actions button:hover{ background:var(--hover); border-color:var(--line-strong); color:var(--fg-bright) }
+.asset .actions button.trade{ border-color:var(--orange); color:var(--orange) }
+.asset .actions button.trade:hover{ background:var(--orange); color:#000 }
+
+.utxo{ border-top:1px solid var(--border); background:var(--bg) }
+.utxo .head{ display:flex; justify-content:space-between; align-items:center; padding:9px 16px; border-bottom:1px solid var(--border-soft); cursor:pointer }
+.utxo .head h3{ margin:0; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; font-weight:600; font-family:var(--font-mono) }
+.utxo .head h3 .sub{ color:var(--dim); margin-left:8px; font-weight:400 }
+.utxo .head .caret{ color:var(--muted); font-size:11px }
+.utxo .body{ display:none }
+.utxo.open .body{ display:block }
+.utxo table{ width:100%; border-collapse:collapse; font-size:11.5px }
+.utxo th{ text-align:left; padding:7px 16px; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.55px; border-bottom:1px solid var(--border-soft); font-weight:500; background:var(--panel) }
+.utxo th.num{ text-align:right }
+.utxo td{ padding:7px 16px; border-bottom:1px solid var(--border-soft); font-family:var(--font-mono); color:var(--fg) }
+.utxo td.num{ text-align:right }
+.utxo td.txid{ color:var(--muted) }
+.utxo tr:hover td{ background:var(--hover) }
+
+.statusbar{ display:flex; align-items:center; gap:18px; padding:5px 12px; background:var(--bg); border-top:1px solid var(--border); font-size:12px; color:var(--muted) }
+.statusbar .live{ display:flex; align-items:center; gap:6px; color:var(--green) }
+.statusbar .live .dot{ width:7px; height:7px; border-radius:50%; background:var(--green); display:inline-block }
+.statusbar .live .dot.bad{ background:var(--red) }
+.statusbar .right{ margin-left:auto; display:flex; gap:14px }
+.statusbar .right span{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px }
+
+.modal-bg{ position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:50 }
+.modal-bg.open{ display:flex }
+.modal{ background:var(--bg); border:1px solid var(--line-strong); border-radius:3px; padding:22px 26px; min-width:380px; max-width:480px }
+.modal h4{ font-family:var(--font-display); font-size:16px; color:var(--fg-bright); text-transform:uppercase; letter-spacing:.7px; margin-bottom:14px }
+.modal .body{ font-size:12px; color:var(--fg); line-height:1.6 }
+.modal .body b{ color:var(--orange); font-weight:600 }
+.modal .addr{ font-family:var(--font-mono); font-size:12px; background:var(--panel); border:1px solid var(--border-soft); padding:10px 12px; border-radius:2px; word-break:break-all; color:var(--fg-bright); text-align:center; margin:14px 0 }
+.modal .actions{ display:flex; gap:8px; margin-top:18px }
+.modal .actions button{ flex:1; padding:9px; font-size:11px; font-weight:700; border:1px solid; border-radius:2px; text-transform:uppercase; letter-spacing:.6px }
+.modal .cancel{ background:transparent; color:var(--muted); border-color:var(--border) }
+.modal .confirm{ background:var(--orange); color:#000; border-color:var(--orange) }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="logo">BTX</div>
+  <div class="navlinks">
+    <a href="/">Trade</a>
+    <a href="/btx_book.html">Book</a>
+    <a href="/btx_trades.html">Trades</a>
+    <a href="/btx_create.html">Create</a>
+    <a class="on">Wallet</a>
+    <a href="https://github.com/renshuBTC" target="_blank" rel="noopener">Docs</a>
+  </div>
+  <div class="navright">
+    <span class="pill" id="chainPill">…</span>
+    <span class="pill" id="syncPill">…</span>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="walletsel">
+    <span class="name" id="walletName">btx</span>
+    <span class="chip">Self-custody</span>
+  </div>
+  <div class="metric"><span class="l">BTC balance</span><span class="v big" id="mBtc">—</span></div>
+  <div class="metric"><span class="l">Pending</span><span class="v small" id="mPending">—</span></div>
+  <div class="metric"><span class="l">UTXOs</span><span class="v small" id="mUtxoCount">—</span></div>
+  <div class="metric"><span class="l">Block height</span><span class="v small g" id="mHeight">—</span></div>
+</div>
+
+<main>
+
+  <div class="card">
+    <h3>
+      <span>Assets</span>
+      <span class="sub" id="assetsSub">live from your Bitcoin Core wallet</span>
+    </h3>
+    <div id="assetsList">
+      <div class="empty">loading wallet…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>
+      <span>Recent activity</span>
+      <span class="sub">tx history</span>
+    </h3>
+    <div class="empty" style="padding:36px 14px">
+      <p style="margin-bottom:10px">A merged BTC tx + BTX swap history view is on the roadmap (task #227).</p>
+      <p style="font-size:10.5px;color:var(--dim)">For now: <a href="/btx_trades.html" style="color:var(--orange)">/btx_trades.html</a> shows on-chain BTX fills; <code style="background:var(--panel);padding:1px 5px;border-radius:2px">listtransactions</code> via bitcoin-cli shows generic BTC tx history until btxd grows an endpoint for it.</p>
+    </div>
+  </div>
+
+</main>
+
+<div class="utxo" id="utxoPanel">
+  <div class="head" id="utxoHead">
+    <h3>UTXOs <span class="sub" id="utxoSub">click to expand</span></h3>
+    <span class="caret" id="utxoCaret">&#9662;</span>
+  </div>
+  <div class="body">
+    <table>
+      <thead><tr>
+        <th>txid : vout</th>
+        <th>Address</th>
+        <th>Type</th>
+        <th class="num">Amount BTC</th>
+        <th class="num">Confirms</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody id="utxoBody">
+        <tr><td colspan="6" class="empty">loading UTXOs…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span class="live"><span class="dot" id="liveDot"></span><span id="liveTxt">connecting…</span></span>
+  <span class="right">
+    <span>Self-custody</span>
+    <span>L1 only</span>
+    <span id="rightInfo">—</span>
+  </span>
+</div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h4 id="modalTitle">Receive BTC</h4>
+    <div class="body" id="modalBody"></div>
+    <div class="actions">
+      <button class="cancel" id="modalCancel">Close</button>
+      <button class="confirm" id="modalConfirm" style="display:none">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtBtc = n => (Number(n) || 0).toFixed(8);
+const shortTxid = (s, n) => s ? (s.length > n*2 ? s.slice(0, n) + '…' + s.slice(-n) : s) : '';
+
+function openModal(title, body, withCopy){
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = body;
+  $('modalConfirm').style.display = withCopy ? '' : 'none';
+  $('modal').classList.add('open');
+}
+$('modalCancel').onclick = () => $('modal').classList.remove('open');
+
+let lastReceiveAddr = '';
+$('modalConfirm').onclick = async () => {
+  if(lastReceiveAddr && navigator.clipboard){
+    try { await navigator.clipboard.writeText(lastReceiveAddr); $('modalConfirm').textContent = 'Copied ✓'; }
+    catch(e){ $('modalConfirm').textContent = 'copy failed'; }
+    setTimeout(() => { $('modalConfirm').textContent = 'Copy'; }, 1500);
+  }
+};
+
+async function getJson(path){
+  try{ const r = await fetch(path, { cache:'no-store' }); if(!r.ok) return null; return await r.json(); }
+  catch(e){ console.error('GET', path, e); return null; }
+}
+async function postJson(path, body){
+  try{ const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {}) });
+       const j = await r.json().catch(() => null); return { ok:r.ok, status:r.status, body:j }; }
+  catch(e){ return { ok:false, status:0, body:{ error:String(e) } }; }
+}
+
+function setLive(ok, txt){
+  $('liveDot').classList.toggle('bad', !ok);
+  $('liveTxt').textContent = txt;
+}
+function setPill(el, cls, txt){
+  el.className = 'pill ' + cls;
+  el.textContent = txt;
+}
+
+async function refresh(){
+  // Node + chain
+  const node = await getJson('/api/node/status');
+  if(node){
+    setPill($('chainPill'), 'ok', node.chain || 'node');
+    const prog = node.verificationprogress;
+    if(prog >= 0.999) setPill($('syncPill'), 'ok', 'synced');
+    else setPill($('syncPill'), 'warn', 'syncing ' + ((prog||0)*100).toFixed(1) + '%');
+    $('mHeight').textContent = (node.blocks ?? '—').toLocaleString();
+    $('rightInfo').textContent = (node.blocks ?? '—') + ' blocks';
+  } else {
+    setPill($('chainPill'), 'bad', 'no node');
+    setPill($('syncPill'), 'bad', 'down');
+  }
+
+  // Config (wallet name)
+  const cfg = await getJson('/api/config');
+  if(cfg && cfg.wallet) $('walletName').textContent = cfg.wallet;
+
+  // Wallet (balance + UTXOs) — field shape comes from btxd.h_wallet():
+  //   { trusted, untrusted_pending, immature, utxos: [{txid,vout,amount,address,scriptPubKey,p2wpkh}] }
+  const wallet = await getJson('/api/wallet');
+  if(wallet){
+    const bal = wallet.trusted ?? 0;
+    const pending = wallet.untrusted_pending ?? 0;
+    const utxos = wallet.utxos || [];
+
+    $('mBtc').textContent = fmtBtc(bal) + ' BTC';
+    $('mPending').textContent = fmtBtc(pending) + ' BTC';
+    $('mUtxoCount').textContent = utxos.length;
+    $('utxoSub').textContent = utxos.length + ' total · ' + fmtBtc(bal) + ' BTC · click to expand';
+
+    // Assets list — just BTC for now (USDh balance reading needs ord/runes scan which we'll add later)
+    $('assetsList').innerHTML = renderAssetRow('BTC', 'Bitcoin', 'btc', '&#8383;', 'BTC · L1 native', bal, bal + ' BTC');
+    wireAssetActions();
+
+    // UTXO table
+    const tb = $('utxoBody');
+    if(utxos.length === 0){
+      tb.innerHTML = '<tr><td colspan="6" class="empty">no spendable UTXOs yet — fund this wallet at a signet faucet</td></tr>';
+    } else {
+      // btxd ships {txid, vout, amount, address, scriptPubKey, p2wpkh}.
+      // listunspent was called with minconf=1, so every UTXO here is at least 1-confirmed.
+      tb.innerHTML = utxos.map(u => {
+        const txid = u.txid || '';
+        const vout = u.vout ?? 0;
+        const amt = u.amount ?? 0;
+        const addr = u.address || '';
+        const spk = (u.scriptPubKey || '').toLowerCase();
+        let type = '—';
+        if (u.p2wpkh || spk.startsWith('0014')) type = 'P2WPKH';
+        else if (spk.startsWith('5120')) type = 'P2TR';
+        else if (spk.startsWith('0020')) type = 'P2WSH';
+        else if (spk.startsWith('76a914')) type = 'P2PKH';
+        else if (spk.startsWith('a914')) type = 'P2SH';
+        return `<tr>
+          <td class="txid">${esc(shortTxid(txid, 6))}:${vout}</td>
+          <td>${esc(shortTxid(addr, 6))}</td>
+          <td>${type}</td>
+          <td class="num">${fmtBtc(amt)}</td>
+          <td class="num">≥1</td>
+          <td style="color:var(--muted)">spendable</td>
+        </tr>`;
+      }).join('');
+    }
+    setLive(true, 'wallet live · ' + utxos.length + ' UTXOs · ' + fmtBtc(bal) + ' BTC');
+  } else {
+    $('mBtc').textContent = 'unavailable';
+    $('mPending').textContent = '—';
+    $('mUtxoCount').textContent = '—';
+    $('utxoSub').textContent = 'wallet unavailable';
+    $('utxoBody').innerHTML = '<tr><td colspan="6" class="empty">wallet endpoint returned nothing — is btxd up?</td></tr>';
+    $('assetsList').innerHTML = '<div class="empty">wallet unavailable — check the daemon pane</div>';
+    setLive(false, 'wallet endpoint down');
+  }
+}
+
+function renderAssetRow(asset, displayName, iconClass, iconChar, sub, amount, valueText){
+  return `
+    <div class="asset" data-asset="${esc(asset)}">
+      <div class="left">
+        <div class="icon ${iconClass}">${iconChar}</div>
+        <div class="meta">
+          <span class="name">${esc(displayName)}</span>
+          <span class="sub">${esc(sub)}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0">
+        <div class="balance">
+          <span class="amount">${esc(fmtBtc(amount))}</span>
+          <span class="value">${esc(valueText)}</span>
+        </div>
+        <div class="actions">
+          <button data-act="recv">Receive</button>
+          <button data-act="send">Send</button>
+          <button class="trade" data-act="trade">Trade</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wireAssetActions(){
+  document.querySelectorAll('.asset .actions button').forEach(b => {
+    b.onclick = async () => {
+      const asset = b.closest('.asset').dataset.asset;
+      const act = b.dataset.act;
+      if(act === 'trade'){
+        window.location = '/';
+      } else if(act === 'recv'){
+        openModal(`Receive ${asset}`, '<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">generating address…</div>', false);
+        const res = await postJson('/api/wallet/newaddress', {});
+        if(res.ok && res.body && (res.body.address || res.body.addr)){
+          lastReceiveAddr = res.body.address || res.body.addr;
+          openModal(`Receive ${asset}`,
+            `<div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:6px">Bitcoin Core just generated a fresh address for the <b>${esc($('walletName').textContent)}</b> wallet.</div>
+             <div class="addr">${esc(lastReceiveAddr)}</div>
+             <div style="font-size:10.5px;color:var(--dim);text-align:center;margin-top:8px">Send signet BTC to this address. Funds will appear here after 1 confirmation.</div>`,
+            true);
+        } else {
+          openModal(`Receive ${asset}`,
+            `<div style="color:var(--red);font-size:12px">Address generation failed: ${esc(res.body?.error || 'unknown')}.<br>Check that the BTX daemon stack is up.</div>`,
+            false);
+        }
+      } else if(act === 'send'){
+        openModal(`Send ${asset}`,
+          `<div style="font-size:12px;color:var(--fg);line-height:1.7">Send isn't wired into btxd yet — it'd need a new <code style="background:var(--panel);padding:1px 5px;border-radius:2px">/api/wallet/send</code> endpoint backed by <code style="background:var(--panel);padding:1px 5px;border-radius:2px">bitcoin-cli sendtoaddress</code>.</div>
+           <div style="font-size:11px;color:var(--muted);margin-top:10px">For now you can run from WSL:<br><code style="background:var(--panel);padding:6px 10px;border-radius:2px;display:block;margin-top:6px;font-size:11px">bitcoin-cli -signet -datadir=~/sig-public -rpcwallet=btx sendtoaddress &lt;addr&gt; &lt;amt&gt;</code></div>
+           <div style="font-size:10.5px;color:var(--dim);margin-top:10px">Tracked as task #227 (Send + dedicated Activity page).</div>`,
+          false);
+      }
+    };
+  });
+}
+
+$('utxoHead').onclick = () => {
+  $('utxoPanel').classList.toggle('open');
+  $('utxoCaret').innerHTML = $('utxoPanel').classList.contains('open') ? '&#9650;' : '&#9662;';
+};
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
