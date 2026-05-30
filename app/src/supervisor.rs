@@ -604,8 +604,24 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> Vec<DaemonSpec> {
         },
         DaemonSpec {
             name: "ord",
+            // v0.2.6: pre-flight stale-lock recovery. ord 0.27's embedded
+            // redb sets an OPEN flag inside index.redb when the database is
+            // opened, and clears it on clean shutdown. If ord crashes or is
+            // SIGKILL'd, the flag stays set and the next ord process refuses
+            // to start with "Database already open. Cannot acquire lock."
+            // We detect this signature in the most recent /tmp/btx-ord.log
+            // (which the previous attempt wrote on the way out) and rm the
+            // chain-specific index subdir so the new ord rebuilds clean.
+            // Only runs on regtest where reindex is cheap (~10s for ~200
+            // blocks); signet/mainnet keep the manual-recovery path until
+            // we wire wedge detection in v0.2.7+.
             wsl_command: format!(
-                "mkdir -p {datadir}/ord && \
+                "if [ '{chain}' = 'regtest' ] && [ -f {LOG_DIR_WSL}/btx-ord.log ] && \
+                    grep -q 'Database already open' {LOG_DIR_WSL}/btx-ord.log; then \
+                     echo '[ord-recover] stale redb lock detected; rebuilding index'; \
+                     rm -rf {datadir}/ord/{chain}; \
+                 fi && \
+                 mkdir -p {datadir}/ord && \
                  exec $HOME/.btx/bin/ord {ord_chain_flag} \
                  --bitcoin-data-dir {datadir} \
                  --cookie-file {cookie_path} \
