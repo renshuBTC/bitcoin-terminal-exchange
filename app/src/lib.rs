@@ -71,13 +71,23 @@ pub fn run() {
                     // M4: route first-launch users to the setup wizard.
                     // Check if ~/.btx/setup.json exists inside WSL — if not,
                     // navigate to btx_setup.html instead of the default route.
+                    //
+                    // v0.2.1: previously navigated to "/" relative; the
+                    // window's initial URL was http://127.0.0.1:3333 so the
+                    // webview loaded the connection-refused page during the
+                    // 30-60s daemon startup. Now the window starts at
+                    // index.html (a bundled loading screen), and we use an
+                    // ABSOLUTE URL here so the navigation crosses origins
+                    // from tauri://localhost (frontendDist) to btxd's HTTP
+                    // server. Without the absolute URL, "/" would resolve
+                    // against tauri:// and fail.
                     let first_launch = check_first_launch().await;
                     let target_path = if first_launch {
                         eprintln!("[btx-app] first launch detected; routing to setup wizard");
-                        "/btx_setup.html"
+                        "http://127.0.0.1:3333/btx_setup.html"
                     } else {
                         eprintln!("[btx-app] setup already complete; loading trade page");
-                        "/"
+                        "http://127.0.0.1:3333/"
                     };
                     let nav_js = format!("window.location='{target_path}';");
                     let _ = window.eval(&nav_js);
