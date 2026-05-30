@@ -754,6 +754,46 @@ class Handler(BaseHTTPRequestHandler):
                     and all(c in "0123456789abcdefABCDEF" for c in parts[1]) and parts[2].isdigit()):
                 return self._guard(lambda: self._send(brk_get(f"/api/v1/btx/{name}")))
             return self._send({"error": "unknown dex read"}, 404)
+        # ---- Supervisor read-through (M3 bundle work) -----------------------
+        # The Tauri shell's daemon supervisor publishes its snapshot to a known
+        # file inside WSL every ~2s; btxd just reads it. Same for per-daemon
+        # log tailing. This sidesteps Tauri 2's permission system for remote
+        # URLs (which blocks direct IPC calls from btxd-served pages) — the
+        # debug pane in btx_daemons.html uses fetch() against these routes.
+        if p == "/api/supervisor/status":
+            def _read_status():
+                try:
+                    with open("/tmp/btx-supervisor.json", "r") as f:
+                        import json as _json
+                        return _json.load(f)
+                except (OSError, ValueError):
+                    return {"error": "supervisor status not yet written"}
+            return self._guard(lambda: self._send(_read_status()))
+        if p == "/api/supervisor/logs":
+            # /api/supervisor/logs?name=<daemon>&n=<lines>
+            qs = self.path.split("?", 1)
+            name = ""
+            n = 100
+            if len(qs) == 2:
+                from urllib.parse import parse_qs as _pq
+                params = _pq(qs[1])
+                name = (params.get("name", [""])[0] or "").strip()
+                try:
+                    n = max(1, min(2000, int(params.get("n", ["100"])[0])))
+                except ValueError:
+                    n = 100
+            # Daemon-name allowlist: prevents path traversal via name=...
+            if name not in {"bitcoind", "brk_cli", "ord", "btxd"}:
+                return self._send({"error": "unknown daemon"}, 400)
+            def _tail():
+                path = f"/tmp/btx-{name}.log"
+                try:
+                    with open(path, "r") as f:
+                        lines = f.readlines()
+                    return {"lines": [l.rstrip("\n") for l in lines[-n:]]}
+                except OSError:
+                    return {"lines": []}
+            return self._guard(lambda: self._send(_tail()))
         if p.endswith((".html", ".js", ".css", ".svg")):
             return self._send_file(p)
         self._send({"error": "not found", "path": p}, 404)

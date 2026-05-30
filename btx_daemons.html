@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — daemons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap">
+<style>
+:root{
+  --bg:#000; --fg:#d4d4d4; --fg-bright:#fff;
+  --muted:#888; --dim:#666;
+  --border:#2a2a2a; --border-soft:#1f1f1f;
+  --hover:#1a1a1a; --panel:#0d0d0d;
+  --line-strong:#555;
+  --orange:#ff8c00; --orange-bright:#ffaa33;
+  --red:#f0616d; --red-bg:#1a0e0e; --red-border:#5e2e34;
+  --green:#26a69a; --green-bg:#0e1a16; --green-border:#1a4940;
+  --amber:#e6b34a;
+  --font-mono:'Source Code Pro', Consolas, Menlo, monospace;
+  --font-display:'Roboto Condensed', system-ui, sans-serif;
+}
+*{margin:0; padding:0; box-sizing:border-box}
+::selection{ background:var(--orange); color:#000 }
+html,body{ height:100%; background:var(--bg); color:var(--fg); font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums; line-height:1.45 }
+button{ font-family:inherit; cursor:pointer }
+a{ color:var(--fg); text-decoration:none }
+a:hover{ color:var(--fg-bright); text-decoration:underline; text-underline-offset:2px; text-decoration-color:var(--orange) }
+
+.nav{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 14px; background:var(--bg);
+  border-bottom:1px solid var(--border);
+}
+.logo{
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--font-display); font-weight:700; font-size:15px;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.8px;
+  padding:0 10px 0 2px;
+}
+.logo::before{
+  content:""; display:inline-block; width:18px; height:18px;
+  background:var(--orange); border-radius:3px;
+  background-image:linear-gradient(135deg, var(--orange) 60%, var(--orange-bright) 100%);
+}
+.navlinks{ display:flex; gap:2px; margin-left:6px }
+.navlinks a{
+  color:var(--fg); padding:6px 12px; font-size:12px;
+  border-radius:3px; text-transform:uppercase; letter-spacing:.5px;
+}
+.navlinks a:hover{ background:var(--hover); color:var(--fg-bright); text-decoration:none }
+.navlinks a.on{ background:var(--hover); color:var(--fg-bright) }
+.navright{ margin-left:auto; display:flex; align-items:center; gap:6px }
+.pill{
+  display:inline-flex; align-items:center;
+  background:var(--hover); color:var(--fg); border:1px solid var(--line-strong);
+  border-radius:2px; height:28px; padding:0 10px;
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+  line-height:26px;
+}
+.pill.ok  { color:var(--green); border-color:#2c5e57 }
+.pill.warn{ color:var(--amber); border-color:#7a4b13 }
+.pill.bad { color:var(--red); border-color:var(--red-border) }
+
+h1{
+  font-family:var(--font-display); font-size:18px; font-weight:700;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.5px;
+  padding:14px 16px 4px;
+}
+.sub{ padding:0 16px 14px; font-size:11px; color:var(--muted); line-height:1.5 }
+
+.warn-box{
+  margin:14px 16px; padding:14px 16px;
+  background:#1a0e00; border:1px solid #7a4b13; border-radius:3px;
+  color:var(--amber); font-size:12px; line-height:1.6;
+}
+.warn-box code{ color:var(--orange); background:rgba(0,0,0,.3); padding:1px 5px; border-radius:2px }
+
+table.daemons{
+  width:calc(100% - 32px); margin:0 16px 16px;
+  border-collapse:collapse; font-size:12px;
+  background:var(--bg);
+}
+table.daemons th{
+  text-align:left; padding:9px 12px;
+  color:var(--muted); font-size:10px; text-transform:uppercase;
+  letter-spacing:.55px; font-weight:500;
+  background:var(--panel); border-bottom:1px solid var(--border);
+}
+table.daemons th.num{ text-align:right }
+table.daemons td{
+  padding:9px 12px; border-bottom:1px solid var(--border-soft);
+  font-family:var(--font-mono); color:var(--fg);
+}
+table.daemons td.num{ text-align:right }
+table.daemons tr.click{ cursor:pointer }
+table.daemons tr.click:hover td{ background:var(--hover) }
+table.daemons tr.open td{ background:var(--hover) }
+.state-pill{
+  display:inline-block; padding:2px 7px; border-radius:2px;
+  font-size:10px; text-transform:uppercase; letter-spacing:.5px;
+  font-weight:600;
+}
+.state-pill.stopped { background:var(--panel); color:var(--muted); border:1px solid var(--border) }
+.state-pill.starting{ background:#1a0e00; color:var(--amber); border:1px solid #7a4b13 }
+.state-pill.running { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border) }
+.state-pill.stopping{ background:#1a0e00; color:var(--amber); border:1px solid #7a4b13 }
+.state-pill.crashed { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border) }
+.state-pill.dead    { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); font-weight:700 }
+
+.acts{ display:flex; gap:4px; justify-content:flex-end }
+.acts button{
+  background:transparent; color:var(--muted);
+  border:1px solid var(--border); border-radius:2px;
+  padding:3px 8px; font-size:10px;
+  text-transform:uppercase; letter-spacing:.4px;
+}
+.acts button:hover{ color:var(--fg-bright); border-color:var(--line-strong) }
+.acts button.danger{ color:var(--red); border-color:var(--red-border) }
+.acts button.danger:hover{ background:var(--red-bg) }
+.acts button.go{ color:var(--orange); border-color:#7a4b13 }
+.acts button.go:hover{ background:#1a0e00 }
+
+.log-row td{ background:var(--bg); padding:0; border-bottom:1px solid var(--border) }
+.log-row .log-inner{
+  padding:12px 16px; background:#050505;
+  border-top:1px dashed var(--border);
+}
+.log-row pre{
+  font-family:var(--font-mono); font-size:11px; color:var(--fg);
+  white-space:pre-wrap; word-break:break-all;
+  max-height:280px; overflow:auto; line-height:1.5;
+  background:transparent;
+}
+.log-row pre .err{ color:var(--red) }
+.log-row .empty{ color:var(--dim); font-size:11px; padding:10px }
+
+.statusbar{
+  position:fixed; bottom:0; left:0; right:0;
+  display:flex; align-items:center; gap:18px;
+  padding:5px 12px; background:var(--bg);
+  border-top:1px solid var(--border);
+  font-size:12px; color:var(--muted);
+}
+.statusbar .live{ display:flex; align-items:center; gap:6px; color:var(--green) }
+.statusbar .live .dot{ width:7px; height:7px; border-radius:50%; background:var(--green); display:inline-block }
+.statusbar .live .dot.bad{ background:var(--red) }
+.statusbar .right{ margin-left:auto; display:flex; gap:14px }
+.statusbar .right span{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px }
+
+main{ padding-bottom:48px }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="logo">BTX</div>
+  <div class="navlinks">
+    <a href="/">Trade</a>
+    <a href="/btx_book.html">Book</a>
+    <a href="/btx_trades.html">Trades</a>
+    <a href="/btx_create.html">Create</a>
+    <a class="on">Daemons</a>
+  </div>
+  <div class="navright">
+    <span class="pill" id="modeBadge">browser mode</span>
+  </div>
+</div>
+
+<main>
+
+<h1>Daemons</h1>
+<p class="sub">
+  Per-process supervisor view from M3 of the bundle work. Each row is one
+  process inside the BTX bundle. Click a row to expand its live log tail.
+  The Restart and Stop buttons go through the Tauri shell’s IPC bridge.
+</p>
+
+<div id="warn" class="warn-box" style="display:none">
+  <strong>Browser mode.</strong> This page was opened in a regular browser
+  rather than inside the BTX app shell. The supervisor IPC is only
+  available from the Tauri webview. Status fields will be empty and
+  action buttons will no-op. Open this page from inside the BTX app
+  window (Trade footer → Daemons) to see live state.
+</div>
+
+<table class="daemons" id="tbl">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>State</th>
+      <th>Port</th>
+      <th>Responding</th>
+      <th class="num">Restarts</th>
+      <th class="num">Failures</th>
+      <th class="num">Uptime</th>
+      <th class="num" style="width:200px">Actions</th>
+    </tr>
+  </thead>
+  <tbody id="rows">
+    <tr><td colspan="8" style="padding:30px;text-align:center;color:var(--dim)">loading…</td></tr>
+  </tbody>
+</table>
+
+</main>
+
+<div class="statusbar">
+  <span class="live"><span class="dot" id="liveDot"></span><span id="liveTxt">loading</span></span>
+  <span class="right">
+    <span>BTX supervisor</span>
+    <span id="lastUpdate">—</span>
+  </span>
+</div>
+
+<script>
+// ============================================================
+// btx_daemons.html — supervisor debug pane
+//
+// Polls btxd's /api/supervisor/* routes (which read a JSON snapshot
+// the Tauri shell's supervisor writes to /tmp/btx-supervisor.json
+// every 2s, and tail per-daemon log files). This works in both the
+// bundled Tauri shell AND a regular browser — no Tauri IPC needed.
+// The action buttons (Start/Stop/Restart) only work in the Tauri
+// shell because they need IPC to invoke the supervisor; in a plain
+// browser they show a notice. Read-only status + logs work anywhere.
+// ============================================================
+
+const TAURI_AVAILABLE = (typeof window !== "undefined" && window.__TAURI__ && window.__TAURI__.core);
+
+document.getElementById("warn").style.display = "none";
+if (TAURI_AVAILABLE) {
+  document.getElementById("modeBadge").classList.add("ok");
+  document.getElementById("modeBadge").textContent = "bundle";
+} else {
+  document.getElementById("modeBadge").textContent = "read-only";
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch("/api/supervisor/status", { cache: "no-store" });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    console.error("status", e);
+    return null;
+  }
+}
+
+async function fetchLogs(name, n) {
+  try {
+    const r = await fetch(`/api/supervisor/logs?name=${encodeURIComponent(name)}&n=${n}`, { cache: "no-store" });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return j.lines || [];
+  } catch (e) {
+    console.error("logs", name, e);
+    return [];
+  }
+}
+
+// Action buttons go through Tauri IPC (only works inside the bundle).
+async function callIpc(cmd, args = {}) {
+  if (!TAURI_AVAILABLE) {
+    alert("Restart/Stop/Start require the BTX app shell — read-only in browser.");
+    return null;
+  }
+  try {
+    return await window.__TAURI__.core.invoke(cmd, args);
+  } catch (e) {
+    console.error("ipc", cmd, e);
+    return null;
+  }
+}
+
+let openLog = null; // currently expanded daemon name
+let openLogLines = [];
+
+function fmtUptime(secs) {
+  if (!secs) return "—";
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function classifyLogLine(line) {
+  const l = line.toLowerCase();
+  if (l.includes("error") || l.includes("panic") || l.includes("fatal")) return "err";
+  return "";
+}
+
+function renderRow(d) {
+  const stateClass = String(d.state || "stopped");
+  const respondingPill = d.port_responding
+    ? `<span class="state-pill running">yes</span>`
+    : `<span class="state-pill stopped">no</span>`;
+  return `
+    <tr class="click" data-name="${escapeHtml(d.name)}">
+      <td><strong>${escapeHtml(d.name)}</strong></td>
+      <td><span class="state-pill ${stateClass}">${escapeHtml(d.state)}</span></td>
+      <td>:${d.ready_port}</td>
+      <td>${respondingPill}</td>
+      <td class="num">${d.restart_count}</td>
+      <td class="num">${d.consecutive_failures}</td>
+      <td class="num">${fmtUptime(d.uptime_secs)}</td>
+      <td class="num">
+        <div class="acts">
+          <button class="go" data-act="start" data-name="${escapeHtml(d.name)}">Start</button>
+          <button data-act="restart" data-name="${escapeHtml(d.name)}">Restart</button>
+          <button class="danger" data-act="stop" data-name="${escapeHtml(d.name)}">Stop</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderLogRow(name, lines) {
+  if (!lines || !lines.length) {
+    return `
+      <tr class="log-row" data-log-for="${escapeHtml(name)}">
+        <td colspan="8"><div class="log-inner"><div class="empty">no log entries yet (file may not exist or is empty)</div></div></td>
+      </tr>
+    `;
+  }
+  const html = lines.map(l => {
+    const cls = classifyLogLine(l);
+    return cls ? `<span class="${cls}">${escapeHtml(l)}</span>` : escapeHtml(l);
+  }).join("\n");
+  return `
+    <tr class="log-row" data-log-for="${escapeHtml(name)}">
+      <td colspan="8"><div class="log-inner"><pre>${html}</pre></div></td>
+    </tr>
+  `;
+}
+
+async function refresh() {
+  const payload = await fetchStatus();
+  const status = (payload && Array.isArray(payload.daemons)) ? payload.daemons : [];
+  const rows = document.getElementById("rows");
+
+  if (!status.length) {
+    if (TAURI_AVAILABLE) {
+      rows.innerHTML = `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--dim)">supervisor returned no daemons</td></tr>`;
+    } else {
+      rows.innerHTML = `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--dim)">IPC unavailable — open from inside the BTX app</td></tr>`;
+    }
+    setStatus(false);
+    return;
+  }
+
+  let html = "";
+  for (const d of status) {
+    html += renderRow(d);
+    if (openLog === d.name) {
+      html += renderLogRow(d.name, openLogLines);
+    }
+  }
+  rows.innerHTML = html;
+
+  // Wire click on rows (expand logs).
+  rows.querySelectorAll("tr.click").forEach(tr => {
+    tr.onclick = async (e) => {
+      if (e.target.tagName === "BUTTON") return;
+      const name = tr.dataset.name;
+      if (openLog === name) {
+        openLog = null;
+        openLogLines = [];
+      } else {
+        openLog = name;
+        openLogLines = (await fetchLogs(name, 120));
+      }
+      refresh();
+    };
+  });
+
+  // Wire action buttons.
+  rows.querySelectorAll(".acts button").forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const act = btn.dataset.act;
+      const name = btn.dataset.name;
+      btn.disabled = true;
+      btn.textContent = "…";
+      const cmd = act === "start" ? "start_daemon"
+                : act === "stop"  ? "stop_daemon"
+                : "restart_daemon";
+      await callIpc(cmd, { name });
+      await refresh();
+    };
+  });
+
+  // Periodically refresh open log.
+  if (openLog) {
+    openLogLines = (await fetchLogs(openLog, 120));
+    const logRow = document.querySelector(`tr.log-row[data-log-for="${openLog}"]`);
+    if (logRow) {
+      logRow.outerHTML = renderLogRow(openLog, openLogLines);
+    }
+  }
+
+  const allOk = status.every(d => d.port_responding);
+  setStatus(allOk);
+}
+
+function setStatus(ok) {
+  const dot = document.getElementById("liveDot");
+  const txt = document.getElementById("liveTxt");
+  if (ok) {
+    dot.classList.remove("bad");
+    txt.textContent = "all daemons up";
+  } else {
+    dot.classList.add("bad");
+    txt.textContent = TAURI_AVAILABLE ? "one or more down" : "no IPC";
+  }
+  document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString();
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Allow the BTX UI served by btxd at 127.0.0.1:3333 to invoke the supervisor's IPC commands. Without remote.urls listing this origin, Tauri 2 does not inject window.__TAURI__ into the webview when it loads an external HTTP URL, so the debug pane in btx_daemons.html can't call daemon_status/daemon_logs/etc.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:webview:default",
+    "core:window:default",
+    "core:event:default"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:3333",
+      "http://127.0.0.1:3333/*"
+    ]
+  }
+}

@@ -5,15 +5,16 @@
   "identifier": "com.renshubtc.btx",
   "build": {
     "beforeDevCommand": "",
-    "devUrl": "http://127.0.0.1:3333",
     "beforeBuildCommand": "",
     "frontendDist": "../"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
         "title": "BTX — Bitcoin Onchain Exchange",
+        "url": "http://127.0.0.1:3333",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,

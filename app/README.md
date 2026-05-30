@@ -10,22 +10,94 @@ A native Windows / Linux / macOS window that loads `http://127.0.0.1:3333` —
 the URL where `btxd` already serves the BTX UI. **Verified working on
 Windows 11.**
 
-## M2 — what works now (current milestone)
+## M2 — what worked
 
-The shell starts the BTX daemon stack itself. Concretely: when you run
-`cargo tauri dev`, the shell now (a) spawns `bash btx-launch.sh` in WSL
-in the background, (b) waits up to 60 seconds for btxd's port 3333 to
-become reachable, then (c) shows the native window. On window close,
-the shell runs `bash btx-launch.sh stop` so nothing is left behind.
+The shell started `bash btx-launch.sh` as a single fire-and-forget
+subprocess, waited for btxd's port 3333 to become reachable, then
+opened the window. On close, ran `bash btx-launch.sh stop`.
 
-Net effect: you no longer need to start `btxd` separately. Open the app,
-the stack comes up. Close the window, the stack stops. (For now, btxd
-still runs via WSL — the project directory is hard-coded to
-`/mnt/c/Users/Ren Shu/Documents/Claude/Projects/bitcoin-terminal-exchange`
-in `src/lib.rs`. M3 reads this from config; M5 ships native binaries.)
+## M3 — what works now (current milestone)
 
-The window stays hidden until btxd responds, so you don't see a broken
-"connection refused" page during startup.
+The single launcher shell-out is gone. The shell now spawns each
+daemon as its own WSL subprocess, in dependency order, and monitors
+them continuously. Crash detection + auto-restart with backoff is
+wired in. A new `btx_daemons.html` debug pane exposes live status
+and per-daemon logs via the Tauri IPC bridge.
+
+The 4 daemons and the dependency chain:
+
+```
+bitcoind  (:38332)
+  └─ brk_cli  (:3140)
+  └─ ord      (:3349)
+      └─ btxd  (:3333)   ← shows window once this port responds
+```
+
+What happens when you open the app:
+
+1. Shell starts `bitcoind` via `wsl.exe bash -c "exec $BIN/bitcoind …"`,
+   redirecting stdout/stderr inside WSL to `/tmp/btx-bitcoind.log`.
+2. Polls `127.0.0.1:38332` every second for up to 90s.
+3. Once bitcoind's RPC port responds, starts `brk_cli` and `ord` (in
+   sequence — could be parallel later, but sequential keeps logs clean).
+4. Once both are ready, starts `btxd`.
+5. Once btxd's port 3333 responds, shows the native window.
+
+Health watcher tasks run every 3 seconds per daemon. If a port stops
+responding, the watcher:
+- Marks the daemon `Crashed`
+- Sleeps an exponentially backed-off interval (1s, 2s, 4s, 8s, 16s)
+- Restarts the daemon
+- Resets after one successful restart cycle
+- Gives up after 5 consecutive failures, marking it `Dead` (manual
+  restart via the debug pane is then the only way back)
+
+On window close: `stop_all()` walks reverse dependency order, sends
+`SIGTERM` to each daemon's process, waits up to 10 seconds for the
+port to close, then `SIGKILL`s if needed. Run via `wsl.exe bash -c
+"pkill -TERM -x bitcoind"` etc.
+
+### Debug pane
+
+Open inside the BTX app shell:
+
+```
+http://127.0.0.1:3333/btx_daemons.html
+```
+
+Each row is one daemon: name, state badge, port, response status,
+restart count, consecutive failures, uptime, action buttons (Start /
+Restart / Stop). Click a row to expand its live log tail (last ~120
+lines, refreshed every 2 seconds). The debug pane uses the Tauri IPC
+bridge (`window.__TAURI__.core.invoke('daemon_status')` etc.), so it
+ONLY functions inside the bundled app — opening it in a plain browser
+shows a "browser mode" notice and inert UI.
+
+### IPC commands exposed
+
+| Command | Args | Returns |
+|---|---|---|
+| `ping` | — | "pong from btx-app" |
+| `daemon_status` | — | `[{name, state, ready_port, port_responding, restart_count, consecutive_failures, uptime_secs, depends_on}, …]` |
+| `daemon_logs` | `{name, n}` | `[String, …]` |
+| `start_daemon` | `{name}` | `null` |
+| `stop_daemon` | `{name}` | `null` |
+| `restart_daemon` | `{name}` | `null` |
+
+### Honest scope of M3
+
+- WSL bridge still hard-coded. Linux/macOS would need different
+  daemon command strings — M3 only ships the Windows path.
+- Daemon paths (bin, datadir, brk dir) hard-coded in
+  `supervisor::make_default_specs()`. Chain is hard-coded to signet.
+  M4's first-launch wizard writes these to a config file.
+- Logs live inside WSL at `/tmp/btx-<name>.log` — tailed via
+  `wsl.exe bash -c "tail -n N …"` for the IPC. M5's native bundle
+  reads them directly via `std::fs`.
+- The watcher uses port polling, not `child.wait()` — when wsl.exe's
+  Windows process exits, the WSL grandchild may live on, so we can't
+  trust the parent-child relationship. Polling the daemon's own port
+  is the reliable signal.
 
 ## Prerequisites
 
