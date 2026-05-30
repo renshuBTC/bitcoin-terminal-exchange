@@ -1081,12 +1081,34 @@ def main():
     # Best-effort: make sure the wallet is loaded so the GUI's wallet panel works out of the box
     # (a "non-dev installs once" product shouldn't require a manual loadwallet). Harmless if the node
     # is down, the wallet is already loaded, or it doesn't exist yet — just logged.
+    #
+    # M6 follow-up: on a fresh self-contained-bundle install the datadir is brand new and the
+    # named wallet won't exist yet. If loadwallet fails with "does not exist" (error -18), we
+    # auto-create a descriptor wallet, then load it. This is what every other onboarding flow
+    # expects ("install BTX, open it, see your wallet") and it matches what the M4 setup wizard
+    # would do if we asked it to — but since the wizard runs before bitcoind is up, deferring
+    # the create to here is simpler. Never auto-create on mainnet via this path: if a user
+    # explicitly picked mainnet they pointed us at an EXISTING Core install (M5b.6's
+    # datadir_override) and a missing wallet there means we've mis-configured, not that we
+    # should silently make a new one.
     if a.wallet:
         try:
             bcli("loadwallet", a.wallet)
             print(f"  loaded wallet '{a.wallet}'")
         except RuntimeError as e:
-            print(f"  (wallet '{a.wallet}' not auto-loaded: {str(e).splitlines()[0][:90]})")
+            msg = str(e)
+            missing = ("does not exist" in msg) or ("Wallet file verification failed" in msg)
+            if missing and a.chain not in ("main", "mainnet"):
+                try:
+                    bcli("-named", "createwallet",
+                         f"wallet_name={a.wallet}",
+                         "descriptors=true",
+                         "load_on_startup=true")
+                    print(f"  created wallet '{a.wallet}' (fresh {a.chain} datadir)")
+                except RuntimeError as ce:
+                    print(f"  (wallet '{a.wallet}' could not be auto-created: {str(ce).splitlines()[0][:90]})")
+            else:
+                print(f"  (wallet '{a.wallet}' not auto-loaded: {msg.splitlines()[0][:90]})")
     # Blast-radius guardrail (BTX-mainnet-hardening.md "blast radius"): btxd drives the wallet to
     # sign/spend with NO per-action consent, so a compromised btxd — or any local process that can POST
     # to it — can spend the entire loaded wallet (threat-model item e). This operationalizes the
