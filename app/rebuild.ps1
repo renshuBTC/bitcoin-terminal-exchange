@@ -4,6 +4,11 @@
 #   cd C:\Users\Ren Shu\Documents\Claude\Projects\bitcoin-terminal-exchange\app
 #   .\rebuild.ps1
 #
+# If you get "running scripts is disabled on this system", either:
+#   powershell -ExecutionPolicy Bypass -File .\rebuild.ps1   (one-time)
+# or set the policy once for your user:
+#   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned       (permanent)
+#
 # This is the canonical dev loop. Don't paste these commands into WSL bash —
 # PowerShell cmdlets like Stop-Process / Start-Sleep don't exist there, and
 # `cargo tauri build` in WSL would target Linux (libdbus-sys error).
