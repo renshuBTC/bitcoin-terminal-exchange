@@ -7,8 +7,8 @@
 #
 # Output layout:
 #   app/bin/linux/
-#     bitcoind          # Bitcoin Core v29.1
-#     bitcoin-cli       # Bitcoin Core v29.1
+#     bitcoind          # Bitcoin Core v30.2 (v0.2.19; was v29.1 pre-v0.2.19)
+#     bitcoin-cli       # Bitcoin Core v30.2
 #     brk_cli           # built from ../brk-btx
 #     ord               # taken from $HOME/bin/ord
 #     SHA256SUMS        # checksums for verification on the user side
@@ -32,7 +32,11 @@ REPO_DIR="$(cd "$APP_DIR/.." && pwd)"        # .../bitcoin-terminal-exchange
 BRK_DIR="$(cd "$REPO_DIR/../brk-btx" && pwd)"
 OUT_DIR="$APP_DIR/bin/linux"
 
-CORE_DIR="${BTX_CORE_DIR:-$HOME/bitcoin-29.1}"
+CORE_DIR="${BTX_CORE_DIR:-$HOME/bitcoin-30.2}"
+# v0.2.19: bumped from $HOME/bitcoin-29.1 to v30.2. Override via BTX_CORE_DIR if
+# you have a different install path. NOTE: v30.0 and v30.1 were RECALLED by the
+# Core devs (catastrophic wallet-deletion bug fixed in v30.2 on 2026-01-10) —
+# bitcoincore.org removed the v30.0/v30.1 binaries; don't use them.
 ORD_BIN="${BTX_ORD_BIN:-$HOME/bin/ord}"
 # brk_cli builds 5-10x faster on ext4; default to ~/.cargo/target-btx-bundle
 # but allow override via env.
@@ -64,9 +68,9 @@ stage_bin() {
     log "staged $name ($(du -h "$OUT_DIR/$name" | cut -f1))"
 }
 
-# ---- 1. Bitcoin Core (bitcoind + bitcoin-cli, v29.1) ------------------------
+# ---- 1. Bitcoin Core (bitcoind + bitcoin-cli, v30.2) ------------------------
 
-log "=== bitcoind + bitcoin-cli (v29.1) ==="
+log "=== bitcoind + bitcoin-cli (target: v30.2) ==="
 [[ -d "$CORE_DIR/bin" ]] || die "Bitcoin Core not at $CORE_DIR/bin — set BTX_CORE_DIR"
 stage_bin "$CORE_DIR/bin/bitcoind"    bitcoind
 stage_bin "$CORE_DIR/bin/bitcoin-cli" bitcoin-cli
@@ -133,16 +137,4 @@ ord          : $ORD_VERSION
 
 Sources:
   Bitcoin Core : $CORE_DIR
-  brk_cli      : $BRK_DIR (cargo build --release -p brk_cli)
-  ord          : $ORD_BIN
-EOF
-
-log "=== done ==="
-log ""
-log "Staged to: $OUT_DIR"
-ls -lh "$OUT_DIR"
-log ""
-log "Total payload: $(du -sh "$OUT_DIR" | cut -f1)"
-log ""
-log "Next: from $APP_DIR run 'cargo tauri build' to produce the NSIS installer"
-log "with these binaries packed as resources."
+  brk

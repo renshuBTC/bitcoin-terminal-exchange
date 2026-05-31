@@ -5,6 +5,87 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [0.2.19] — 2026-05-31 — bundle bumped to Bitcoin Core v30.2
+
+Bumps the bundled `bitcoind` + `bitcoin-cli` from v29.1.0 to v30.2 (released 2026-01-10), the
+first safe v30-series release after v30.0 and v30.1 were RECALLED by the Core devs for a
+catastrophic wallet-deletion bug. (bitcoincore.org removed the v30.0/v30.1 binaries entirely;
+don't bundle either.)
+
+### What v30.2 changes in practice for BTX
+
+- Default `-datacarriersize` is 100,000 bytes (was 83). BTX's ~208-byte OP_RETURN artifact now
+  relays under v30 default policy with massive headroom, vs. being rejected under v29.1 default.
+  The envelope carrier is unchanged (witness data, not subject to datacarriersize).
+- Multiple OP_RETURN outputs per tx are admitted by default. BTX still emits one per envelope/
+  publish tx, so no concrete change in our emit path.
+- `btxd.h_order_create`'s envelope-on-mainnet default **stays** — operator-restricted nodes that
+  set `-datacarriersize=83` to keep pre-v30 behavior (Knots-style configs) still need the witness
+  path for cross-node relay guarantees.
+- Supervisor's `-datacarriersize=240` flag stays as defensive intent (more restrictive than v30
+  default, exactly fits BTX's 208-byte artifact + margin, protects against any future Core
+  defaulting back down). No-op effectively on v30.2 but harmless.
+- Cargo.toml / RPC API: no breaks. v30.2 release notes are wallet-migration + IPC fixes; no flag
+  removals or RPC schema changes affect us. Brk_rpc uses `getblockcount`, `getblock`,
+  `getblockheader`, `getblockhash`, `gettxout`, `getrawmempool`, `getrawtransaction`,
+  `getblockchaininfo` — all stable across the v29→v30 boundary.
+
+### What you need to do (WSL, on your Windows host)
+
+Sandbox can't download the tarball + verify Core signing keys, so this is a host-side step.
+**Verify the GPG signature** against the Bitcoin Core release signatures — never skip this.
+
+```bash
+# 1. Download v30.2 tarball + the signed SHA256SUMS
+cd $HOME
+mkdir -p bitcoin-30.2-stage && cd bitcoin-30.2-stage
+curl -LO https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-x86_64-linux-gnu.tar.gz
+curl -LO https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
+curl -LO https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
+
+# 2. Import the Bitcoin Core release signing keys (see https://bitcoincore.org/en/download)
+#    If you already have them from a prior install, skip.
+curl -sSL https://api.github.com/repos/bitcoin-core/guix.sigs/contents/builder-keys \
+  | grep download_url | cut -d'"' -f4 | xargs -I{} curl -sL {} | gpg --import -
+
+# 3. Verify SHA256SUMS signature, then the tarball checksum
+gpg --verify SHA256SUMS.asc SHA256SUMS                       # MUST show "Good signature"
+grep 'bitcoin-30.2-x86_64-linux-gnu.tar.gz$' SHA256SUMS | sha256sum -c -   # MUST say "OK"
+
+# 4. Extract and install into the path BTX's collect_linux_bins.sh expects
+cd $HOME
+tar -xzf bitcoin-30.2-stage/bitcoin-30.2-x86_64-linux-gnu.tar.gz
+mv bitcoin-30.2 $HOME/bitcoin-30.2     # rename matches BTX_CORE_DIR default
+
+# 5. Re-stage the BTX bundle binaries (this also rebuilds brk_cli)
+cd /mnt/c/Users/Ren\ Shu/Documents/Claude/Projects/bitcoin-terminal-exchange/app
+bash scripts/collect_linux_bins.sh
+
+# 6. Verify the new manifest
+cat bin/linux/VERSIONS.txt   # bitcoind should now say "Bitcoin Core daemon version v30.2.0"
+cat bin/linux/SHA256SUMS
+```
+
+Then `cargo tauri build` from `app/` to re-produce the NSIS installer with the v30.2 binaries
+baked in. The supervisor is unchanged — no Rust rebuild required if you only swap the bundled
+binaries — but a new installer is what ships v30.2 to users.
+
+### Files touched in this commit
+
+- `app/Cargo.toml`, `app/tauri.conf.json`: version `0.2.18` → `0.2.19`.
+- `app/scripts/collect_linux_bins.sh`: `BTX_CORE_DIR` default `$HOME/bitcoin-29.1` →
+  `$HOME/bitcoin-30.2`; comments updated; warning about v30.0/v30.1 recall added.
+- `README.md`, `DEPENDENCIES.md`, `BTX-bundle-recipe.md`: bundled bitcoind version line updated to
+  v30.2, with recall warning where the bundle composition is enumerated.
+- `app/bin/linux/VERSIONS.txt` + `SHA256SUMS`: NOT updated here — they get regenerated when you
+  run `collect_linux_bins.sh` against the new v30.2 install. The current contents reflect v29.1
+  until you re-stage.
+- Historical audit docs (`BTX-e2e-audit-results.md`, `BTX-end-to-end-audit-prompts.md`,
+  `BTX-phase*.md`, `BTX-case-study.md`, etc.) intentionally left alone — they describe what was
+  empirically proven against v29.1 and that history doesn't change. The v30 watchlist note above
+  the e2e result matrix (added 2026-05-31) already explains how Prompt 10's frozen v29.1 snapshot
+  maps onto v30 reality.
+
 ## [brk-btx 2026-05-31] — Indexer stale-tip auto-recovery (all chains)
 
 Companion fix in the brk-btx indexer (`8a197f3` in brk-btx) extending v0.2.18's recovery story to
@@ -118,70 +199,4 @@ self-healing across crashes/wedges, and chain state persists across closes. See
   reverse dep order → relaunch sees the same 202/5100/3675 state. (`a7863b5`, v0.2.5)
 - **ord stale-lock auto-recovery.** ord 0.27 sets an OPEN flag inside its `index.redb` when opening
   the database and clears it on clean shutdown. After a SIGKILL or an internal wedge, the flag stays
-  set and the next ord process refuses to start with "Database already open. Cannot acquire lock."
-  Embedded a pre-flight check in ord's wsl_command: before launching, if the previous attempt's
-  `/tmp/btx-ord.log` shows the lock-error signature, `rm -rf` the chain-specific index subdir so the
-  new ord rebuilds clean. Only fires on regtest where reindex is cheap (~10s for ~200 blocks).
-  (`3aac5d0`, v0.2.6)
-- **ord wedge auto-detection** (v0.2.10–v0.2.12). ord occasionally stops polling bitcoind for new
-  blocks while its HTTP server stays up. Two design iterations:
-  - v0.2.10 introduced a block-gap heuristic on regtest only: poll
-    `btxd /api/health` every 15s, restart ord when its height lagged bitcoind by >5 for >60s.
-    Required two infrastructure findings to land: `wsl.exe bash -c "..."` invocations from Tauri
-    silently return empty for `$()` substitutions, so the supervisor can't reach ord/bitcoin-cli
-    directly — routing through btxd (which runs inside WSL with full visibility) over its already-
-    working `:3333` port works. And Python's `urllib.urlopen(timeout=1)` does NOT actually cap at 1s
-    when the upstream HTTP server is SIGSTOPped — raw `socket.settimeout(1)` does. (`ac4b566`)
-  - v0.2.12 rewrote the detector to **stall-based** logic: wedge = ord's height has not changed for
-    `stall_secs` AND bitcoind has advanced more recently than ord. The block-gap heuristic tripped
-    a false positive on signet/mainnet during legitimate cold-start reindex (ord can stay 1000+
-    blocks behind but is advancing every tick); the stall heuristic survives that because the timer
-    resets each tick. Now enabled across all three chains: 60s regtest, 300s signet, 300s mainnet.
-    (`0c58f2d`)
-- **Double-close dedupe.** A second `CloseRequested` firing mid-shutdown (Tauri occasionally
-  re-emits the event during the `prevent_close` window) re-entered `stop_one` for each daemon,
-  re-firing SIGTERM at processes already in their 10s grace period. Cosmetic but noisy — log
-  lines showed each daemon's stop sequence twice. Added `State::Stopping` to the early-return set
-  so the second invocation no-ops cleanly. (`3cd41bd`, v0.2.11)
-
-### Build / DX
-
-- **`app/rebuild.ps1`** — one-script build-install-launch helper so the dev loop is `.\rebuild.ps1`
-  instead of an 8-line PowerShell paste. Documents the `-ExecutionPolicy Bypass` flag and the
-  PowerShell-vs-WSL pitfall. (`64c6a99`)
-
-### Documentation
-
-- **`BTX-bundled-app-e2e-runbook.md`** — walks through the full trade rail as exercised through the
-  bundled Windows app: launch, mine 101, etch a rune, maker-sign, publish via OP_RETURN, verify on
-  the Book page, fill, verify on the Trades page. Mirrors the older `BTX-live-demo-runbook.md` but
-  with the bundled stack instead of a hand-assembled bitcoind+brk_cli setup, and uses the GUI pages
-  as the visual verification points. Every command in the runbook was run end-to-end during the
-  2026-05-30 session and produced the expected GUI states. (`b93836b`)
-
-### Verification
-
-- **Full E2E proven through the bundled GUI.** At regtest block 226: 1B-unit BTXUSDONREGTESTAA
-  premine → 207-byte maker-sign artifact (`maker_sig_self_verifies: true`) → OP_RETURN carrier tx
-  confirmed at h=224 → brk_cli + btxd both report `n_orders: 1` with the same `book_hash`, "indexer
-  agreed" and "order verified in root" badges green in the GUI → atomic SIGHASH_SINGLE|ANYONECANPAY
-  swap tx confirmed at h=226, fee 10000 sats → Book page drops to 0 orders, Trades page shows the
-  fill with correct seller/buyer attribution.
-- **Self-healing chain verified.** SIGSTOP ord (simulates the internal wedge), mine N blocks, wait
-  for the detector to fire, observe stall threshold trip, SIGTERM → SIGKILL → respawn → fresh ord at
-  chain tip. New `/api/health` agrees: `{ord:N, bitcoind:N}`.
-
-## [0.1.1] — 2026-05-27 — security & robustness hardening
-
-A threat-model-driven audit pass. No protocol custody/theft hole was found (the maker stays
-price-protected by its `SIGHASH_SINGLE|ANYONECANPAY` signature; taker funds stay `SIGHASH_ALL`-
-protected). The fixes below close a local/client attack surface, an indexer panic-on-corruption, and
-two startup-robustness gaps. See `BTX-threat-model.md` and `BTX-mainnet-hardening.md` (items 8–9).
-
-### Security
-
-- **btxd: DNS-rebinding guard.** `btxd` binds `127.0.0.1` but previously did no `Host:`/Origin
-  validation, so a malicious web page could rebind DNS to loopback and `fetch()` wallet-signing actions
-  (publish / fill / batch-fill / etch / swaps). Added a loopback `Host:` allowlist enforced on every
-  `do_GET`/`do_POST` — non-loopback `Host:` is rejected with `403`. The browser cannot forge `Host:` to
-  a loopback name, so
+  set and the next ord process refuses to start with 

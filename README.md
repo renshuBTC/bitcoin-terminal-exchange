@@ -84,7 +84,7 @@ Self-healing, end-to-end:
 
 - **First-launch setup wizard** picks chain (regtest/signet/mainnet) and wallet name, persists to
   `~/.btx/setup.json`. Mainnet users point at their existing Bitcoin Core datadir.
-- **Bundled daemons** (bitcoind 29.1, brk_cli 0.3.0-beta.9, ord 0.27.1, btxd) are copied into
+- **Bundled daemons** (bitcoind 30.2, brk_cli 0.3.0-beta.9, ord 0.27.1, btxd) are copied into
   `~/.btx/bin` and `~/.btx/app` on first launch via a version-sentinel; subsequent launches reuse
   them.
 - **Per-daemon supervisor** spawns each in dependency order, monitors a TCP readiness probe, restarts

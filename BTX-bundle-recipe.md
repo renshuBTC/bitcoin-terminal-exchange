@@ -13,7 +13,9 @@ friction.
 - **Auto first-run:** the launcher creates/loads the wallet; `btxd` auto-loads it; the GUI opens.
 
 ## What a real bundle must contain
-1. `bitcoind` + `bitcoin-cli` (Bitcoin Core v29.1) — per-OS binaries (~40 MB).
+1. `bitcoind` + `bitcoin-cli` (Bitcoin Core v30.2) — per-OS binaries (~40 MB). Note: v30.0/v30.1
+   were RECALLED by Core devs (wallet-deletion bug, fixed in v30.2 on 2026-01-10); never bundle
+   anything older than v30.2 in the v30 series.
 2. `brk_cli` — the brk-btx indexer, a **native per-OS build** (today built in WSL; a native Windows
    build is unverified).
 3. `btxd` + the BTX python tooling (`btx_wallet.py`, `btx_envelope_publish.py`, `btx_*`),
@@ -44,5 +46,4 @@ friction.
 Build the **Linux/WSL `tar.gz` (or AppImage)**: PyInstaller-freeze `btxd`+tooling, assemble it with the
 `bitcoind`/`brk_cli` binaries + UI + a `run` wrapper that calls the launcher logic, and verify a
 non-developer flow: extract → `./run` → GUI opens → faucet a New address → publish + fill a signet trade.
-That delivers the Phase-3 exit criterion as a single download for one OS; cross-platform installers come
-after, if ever (they may not be worth it for a research preview).
+That deli

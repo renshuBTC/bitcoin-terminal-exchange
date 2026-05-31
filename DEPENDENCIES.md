@@ -13,7 +13,7 @@ BTX is two codebases plus bundled binaries:
   (391 packages). Built from source (`cargo build --release -p brk_cli`).
 - **BTX Python tooling (CLI + btxd orchestrator):** ONE third-party runtime dep —
   `python-bitcoinlib`; everything else is stdlib. PyInstaller is build-time only. See `requirements.txt`.
-- **Bundled runtime binaries:** `bitcoind` 29.1, `ord` 0.27.1, `brk_cli` (from source) — see
+- **Bundled runtime binaries:** `bitcoind` 30.2, `ord` 0.27.1, `brk_cli` (from source) — see
   `package-linux.sh`.
 
 ## Security-relevant dependencies (versions from Cargo.lock / code)
