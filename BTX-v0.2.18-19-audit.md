@@ -20,7 +20,7 @@ Scope: today's 5 commits across two repos.
 | # | Severity | Area | Finding | Status |
 |---|----------|------|---------|--------|
 | F1 | LOW | shell quoting | `app/src/supervisor.rs` v0.2.18 recovery `echo` uses single quotes, so `$HOME` does not expand in the user-visible log line | **fixed** in v0.2.18-audit follow-up below |
-| F2 | LOW | diagnostics | `brk_indexer::find_recognized_ancestor` emits no log on success — if walk-back runs for 30s nobody sees why | deferred — nice-to-have, doesn't affect correctness |
+| F2 | LOW | diagnostics | `brk_indexer::find_recognized_ancestor` emits no log on success — if walk-back runs for 30s nobody sees why | **fixed** in brk-btx `5ec96c2` (entry log when tip is not recognized + success log with recovered index and `n_rpcs` count) |
 | F3 | nano | efficiency | Final `Ok(blockhash.collect_one_at(lo))` in `find_recognized_ancestor` re-fetches a hash already validated during binary search | deferred — single DB read, microseconds |
 | F4 | MEDIUM | runbook reliability | v0.2.19 CHANGELOG runbook auto-imports Bitcoin Core release keys via the GitHub API parsed with `grep`/`cut`; brittle (rate-limit, schema drift) and security-sensitive (key acquisition path) | **fixed** in v0.2.19-audit follow-up below |
 | F5 | LOW | narrative consistency | `README.md` historical "v29.1" claims are accurate-as-of-audit but read as stale next to the new "bundle ships v30.2" line; an inline caveat similar to the one added to `BTX-e2e-audit-results.md` keeps both the historical truth and the current state visible | **fixed** in v0.2.19-audit follow-up below |
@@ -47,7 +47,15 @@ The `rm -rf` is outside any quotes, so `$HOME` expands and the wipe works correc
 
 **Verification approach.** A pre-vs-post `bash -c` of the rendered shell, with `$HOME` set to a fixed value, comparing the echoed line.
 
-## F2 — Walk-back emits no diagnostic on success (LOW, deferred)
+## F2 — Walk-back emits no diagnostic on success (LOW, fixed)
+
+**Status update 2026-05-31, post-runbook:** the regtest exercise runbook
+(`BTX-walkback-regtest-runbook.md`) made it concrete that operators driving the test would need
+log breadcrumbs to know which of three outcomes fired. Shipped two `info!()` calls in brk-btx
+`5ec96c2` along with an `n_rpcs: usize` counter so the success log reports the recovery cost.
+Original deferral text retained below for context.
+
+
 
 **Where.** `brk_indexer::find_recognized_ancestor` (brk-btx `8a197f3`).
 
@@ -98,6 +106,4 @@ This is the same shape as the watchlist note added to `BTX-e2e-audit-results.md`
 
 ## Out of scope
 
-- **Walk-back runtime exercise.** This audit is static. Driving a real regtest scenario (mine blocks → SIGKILL bitcoind → restart and watch the walk-back path execute) is a separate task. The 5-case mental trace in this doc covers the cases I could enumerate; that's not the same as observing the path on a real chain.
-- **brk_computer warnings.** `cargo build --release -p brk_cli` produced 3 warnings (`brk_types::Sats` unused, `BLOCK_WINDOW_LEN` dead constant, `held_age_state` field unread). All pre-date today's commits and live in `brk_computer`, untouched by this work. Not BTX's bug, not BTX's fix.
-- **F2 + F3** as documented above.
+- **Walk-back runtime exercise.** This audit is static. Driving a real regtest scenario (mine blocks → SIGKILL bitcoind → restart and watch the walk-back path execu
