@@ -5,6 +5,40 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [brk-btx 2026-05-31] — Indexer stale-tip auto-recovery (all chains)
+
+Companion fix in the brk-btx indexer (`8a197f3` in brk-btx) extending v0.2.18's recovery story to
+mainnet and signet — the chains that v0.2.18 explicitly couldn't help.
+
+When bitcoind's dbcache rolls back below brk_indexer's last-indexed tip, the first
+`getblockheader` inside `get_closest_valid_height` errors `-5 "Block not found"` and the indexer
+process exits with no way to make progress short of a full state wipe. v0.2.18 caught this on the
+*supervisor* side for regtest by detecting the error in the brk_cli log and `rm -rf`-ing the brk
+state dir, but a full re-index from genesis on mainnet would take days, so signet/mainnet got the
+"manual recovery" caveat.
+
+The new fix lives inside `brk_indexer::index_` (brk-btx). Before calling `get_closest_valid_height`,
+the indexer reconciles its stored tip against bitcoind by walking its OWN stored blockhash vec
+backward — exponential backoff to find a recognized ancestor, then binary-search refinement to pin
+down the most-recent recognized index so no progress is lost. Then it hands that hash to
+`get_closest_valid_height` for the residual orphan→main-chain resolution. Typical small-divergence
+cases (a few-block rollback) finish in a handful of RPCs; catastrophic full-divergence cases finish
+in O(log N) and fall through to the same `full_reset` the existing length-inconsistency branch
+already used.
+
+`brk_rpc::Client::recognizes_block(&hash)` is the new helper that specifically translates RPC -5
+into `Ok(false)` and propagates every other error as `Err` so transport/auth failures don't get
+silently misclassified as chain divergence.
+
+The v0.2.18 supervisor-side log-tail wipe stays as a belt-and-suspenders catch for the narrower
+case where the indexer process is killed before its normal startup path runs at all (e.g. SIGKILLed
+mid-handshake), and stays regtest-only so we never wipe mainnet/signet state from outside the
+indexer. Comment narrowed in `app/src/supervisor.rs` to reflect the new layering.
+
+**Build note:** the brk_indexer change needs a `cargo check -p brk_indexer -p brk_rpc` (and a
+`cargo build --release -p brk_cli` if you want to re-bundle) from the Windows host — the sandbox
+doesn't have cargo. CARGO_TARGET_DIR should still point at ext4 per the existing build memo.
+
 ## [docs 2026-05-31] — Bitcoin Core v30 OP_RETURN policy: BTX implications
 
 Doc-only update resolving the [VERIFY] watchlist tag left in `btx_carrier.py` about 2026 carrier
@@ -150,42 +184,4 @@ two startup-robustness gaps. See `BTX-threat-model.md` and `BTX-mainnet-hardenin
   validation, so a malicious web page could rebind DNS to loopback and `fetch()` wallet-signing actions
   (publish / fill / batch-fill / etch / swaps). Added a loopback `Host:` allowlist enforced on every
   `do_GET`/`do_POST` — non-loopback `Host:` is rejected with `403`. The browser cannot forge `Host:` to
-  a loopback name, so this defeats rebinding while leaving the legitimate `127.0.0.1`/`localhost` GUI
-  working. Verified live: `loopback → 200`, `Host: evil.com → 403`. (`13a373b`)
-- **Terminal: XSS defense-in-depth.** No live XSS existed (every served field reaching `innerHTML` is
-  numeric or hex). Added an `esc()` HTML-entity escaper on the on-chain/indexer-derived fields
-  (`rune_id`, txid, and `artifact_hex` embedded in `onclick`) so a future free-text field (e.g. an ord
-  rune name/symbol) cannot become stored XSS. (`13a373b`)
-- **brk-btx: bounds-safe order-store deserialization.** `BtxOfferKey`/`CxoOrderRecord`
-  `From<ByteView>` indexed the buffer unchecked, so a truncated/corrupted `btx_orders` entry (partial
-  write, disk corruption, local tamper) panicked the indexer. Short buffers now degrade to inert values
-  — a zeroed key (matches no outpoint) and an empty-artifact/sentinel-status record skipped by every
-  read path — never a phantom order, never poisoning the consensus hash. (`brk-btx: c33bddad5`)
-
-### Fixed
-
-- **btxd: no longer crashes on startup when `bitcoin-cli` isn't runnable.** `bcli` now normalizes
-  `FileNotFoundError`/`PermissionError` to `RuntimeError`, so the startup wallet auto-load, offer
-  re-lock, and every `_guard`-wrapped handler degrade gracefully instead of an unhandled exception
-  killing the daemon. (`8d0514a`)
-- **btxd: clean message on port-bind failure** (`ThreadingHTTPServer` `OSError`, e.g. port already in
-  use / btxd already running) instead of a raw bind traceback. (`01504d5`)
-
-### Documentation
-
-- Added `BTX-threat-model.md` — a structured pre-audit threat model (principals, trust boundaries,
-  attack surface by entry point, explicit uncertainties). (`13a373b`)
-- Marked threat-model uncertainties resolved after the audit (ByteView panic and subprocess-arg-list
-  completeness confirmed; DNS-rebinding and XSS surfaces addressed in code). (`7c033ba`)
-- Folded the two new surfaces into `BTX-mainnet-hardening.md` as items 8 (HIGH local — Host guard) and
-  9 (LOW latent — `esc()`). (`13a373b`)
-
-### Packaging
-
-- Bundle bumped to **0.1.1** and rebuilt so the shipped artifacts carry the fixes: frozen `btxd`
-  (Host guard + startup fix), `btx_trade.html` (`esc()`), and a recompiled `brk_cli` (ByteView fix).
-  (`20bf95d`)
-
-### Verification
-
-- Offline suite `btx_test_all.p
+  a loopback name, so

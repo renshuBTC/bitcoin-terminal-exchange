@@ -881,11 +881,19 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
             // Recovery: rm -rf the chain-specific brk dir. Indexer rebuilds
             // from genesis (~seconds on regtest with a handful of blocks).
             //
-            // Regtest only. Mainnet/signet would need walk-back-through-
-            // stored-hashes inside brk_indexer (separate, larger fix);
-            // full re-index from genesis on mainnet would take days, so
-            // here we leave those chains alone and rely on manual recovery
-            // until that path is built.
+            // Regtest only. Mainnet/signet recovery for the same root cause
+            // (bitcoind dbcache rollback below the indexer's tip) is now
+            // handled INSIDE brk_indexer itself — see brk-btx commit
+            // 8a197f3 ("brk_indexer: walk-back recovery for stale tip vs
+            // bitcoind"), which walks the indexer's own stored blockhash
+            // vec backward (exponential backoff + binary refine) to find
+            // an ancestor bitcoind still recognizes and resumes from there
+            // with no progress loss. This supervisor-side wipe stays as a
+            // belt-and-suspenders catch for the narrower case where the
+            // indexer process exits before brk_indexer's normal startup
+            // path runs at all (e.g. SIGKILLed mid-handshake) — and stays
+            // regtest-only so we never wipe mainnet/signet state from
+            // out here.
             wsl_command: format!(
                 "if [ '{chain}' = 'regtest' ] && [ -f {LOG_DIR_WSL}/btx-brk_cli.log ] && \
                     tail -n 50 {LOG_DIR_WSL}/btx-brk_cli.log | grep -q 'Block not found'; then \
@@ -1021,17 +1029,4 @@ async fn fetch_btxd_health() -> Option<(Option<u64>, Option<u64>)> {
         .ok()?
         .ok()?;
     let mut buf = Vec::with_capacity(1024);
-    timeout(Duration::from_secs(3), stream.read_to_end(&mut buf))
-        .await
-        .ok()?
-        .ok()?;
-    let raw = String::from_utf8_lossy(&buf);
-    // Split headers from body at the first blank line.
-    let body_start = raw.find("\r\n\r\n").map(|i| i + 4)
-        .or_else(|| raw.find("\n\n").map(|i| i + 2))?;
-    let body = &raw[body_start..];
-    let v: serde_json::Value = serde_json::from_str(body).ok()?;
-    let ord_h = v.get("ord_height").and_then(|x| x.as_u64());
-    let btc_h = v.get("bitcoind_height").and_then(|x| x.as_u64());
-    Some((ord_h, btc_h))
-}
+  
