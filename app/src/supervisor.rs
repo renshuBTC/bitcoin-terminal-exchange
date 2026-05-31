@@ -202,10 +202,19 @@ impl Supervisor {
             "[wedge-detector] spawning (stall={stall_secs}s, via btxd /api/health on :{BTXD_PORT})"
         );
         tokio::spawn(async move {
+            // v0.2.16: track ord/bitcoind heights AND their last-observed-advance
+            // times as Option<Instant>. None means "we have not yet observed
+            // this daemon making progress." Wedge condition requires BOTH
+            // observations to be Some, which eliminates the v0.2.15 startup
+            // race where the spawn-time Instant::now seeded a 60-second stall
+            // before ord was ever reachable. Without this guard a slow ord
+            // startup (briefly None for a couple ticks while initializing)
+            // would trip a spurious restart at stall_secs even though the
+            // chain hadn't moved at all.
             let mut last_ord_h: Option<u64> = None;
-            let mut last_ord_advance = Instant::now();
+            let mut last_ord_advance: Option<Instant> = None;
             let mut last_btc_h: Option<u64> = None;
-            let mut last_btc_advance = Instant::now();
+            let mut last_btc_advance: Option<Instant> = None;
             loop {
                 tokio::time::sleep(Duration::from_secs(ORD_WEDGE_POLL_SECS)).await;
                 if *shutting_down.lock().await {
@@ -220,39 +229,49 @@ impl Supervisor {
                 if !matches!(ord_state, State::Running) {
                     // Reset trackers — a restart in progress is not a wedge.
                     last_ord_h = None;
-                    last_ord_advance = Instant::now();
+                    last_ord_advance = None;
                     last_btc_h = None;
-                    last_btc_advance = Instant::now();
+                    last_btc_advance = None;
                     continue;
                 }
                 let (ord_h, btc_h) = match fetch_btxd_health().await {
                     Some(pair) => pair,
                     None => continue, // btxd transient; don't reset trackers
                 };
-                // Update ord advance tracking.
+                // Update ord advance tracking. First observation initializes
+                // both fields; subsequent observations only bump the advance
+                // time when the height actually changed.
                 if let Some(h) = ord_h {
                     if Some(h) != last_ord_h {
                         last_ord_h = Some(h);
-                        last_ord_advance = Instant::now();
+                        last_ord_advance = Some(Instant::now());
+                    } else if last_ord_advance.is_none() {
+                        // Same height as before-but-after-reset, still our
+                        // first observation in this state cycle. Anchor.
+                        last_ord_advance = Some(Instant::now());
                     }
                 }
-                // Update bitcoind advance tracking.
+                // Same for bitcoind.
                 if let Some(h) = btc_h {
                     if Some(h) != last_btc_h {
                         last_btc_h = Some(h);
-                        last_btc_advance = Instant::now();
+                        last_btc_advance = Some(Instant::now());
+                    } else if last_btc_advance.is_none() {
+                        last_btc_advance = Some(Instant::now());
                     }
                 }
-                // Wedge condition:
-                //   ord stalled for >= stall_secs AND bitcoind has
-                //   advanced more recently than ord. The second clause
-                //   prevents a quiet chain (no new blocks anywhere) from
-                //   tripping the detector.
-                //
-                //   ord_h=None counts as "not advancing" — the unreachable
-                //   case is handled implicitly.
-                let ord_stall = last_ord_advance.elapsed();
-                let btc_moved_more_recently = last_btc_advance > last_ord_advance;
+                // Wedge condition (v0.2.16 form):
+                //   We have observed BOTH ord and bitcoind at least once
+                //   (both last_*_advance are Some) AND ord's height has not
+                //   changed for >= stall_secs AND bitcoind has changed more
+                //   recently than ord. The Some-checks eliminate the startup
+                //   race; the relative-recency check prevents a quiet chain
+                //   (no new blocks anywhere) from tripping the detector.
+                let (Some(ord_t), Some(btc_t)) = (last_ord_advance, last_btc_advance) else {
+                    continue;
+                };
+                let ord_stall = ord_t.elapsed();
+                let btc_moved_more_recently = btc_t > ord_t;
                 let is_wedged = ord_stall >= Duration::from_secs(stall_secs)
                     && btc_moved_more_recently;
                 if is_wedged {
@@ -270,11 +289,14 @@ impl Supervisor {
                     );
                     sup.restart_one("ord").await;
                     // Reset trackers after restart so the new ord has time
-                    // to come up before we measure stall again.
+                    // to come up before we measure stall again. v0.2.16:
+                    // None means "haven't observed yet"; the next tick will
+                    // re-anchor both advance times after the fresh ord
+                    // reports its first height.
                     last_ord_h = None;
-                    last_ord_advance = Instant::now();
+                    last_ord_advance = None;
                     last_btc_h = None;
-                    last_btc_advance = Instant::now();
+                    last_btc_advance = None;
                 }
             }
         });
