@@ -137,4 +137,16 @@ ord          : $ORD_VERSION
 
 Sources:
   Bitcoin Core : $CORE_DIR
-  brk
+  brk_cli      : $BRK_DIR (cargo build --release -p brk_cli)
+  ord          : $ORD_BIN
+EOF
+
+log "=== done ==="
+log ""
+log "Staged to: $OUT_DIR"
+ls -lh "$OUT_DIR"
+log ""
+log "Total payload: $(du -sh "$OUT_DIR" | cut -f1)"
+log ""
+log "Next: from $APP_DIR run 'cargo tauri build' to produce the NSIS installer"
+log "with these binaries packed as resources."
