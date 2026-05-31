@@ -862,8 +862,37 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
         },
         DaemonSpec {
             name: "brk_cli",
+            // v0.2.18: pre-flight stale-state recovery. When the bundled
+            // regtest bitcoind crashes or restarts without a clean shutdown,
+            // dbcache rollback can drop it back to a height below brk_cli's
+            // indexed tip. On the next brk_cli startup, its stored tip-hash
+            // is no longer in bitcoind's main chain, so the indexer's
+            // `client.get_closest_valid_height(stored_tip_hash)?` call hits
+            // bitcoind RPC error -5 "Block not found" and brk_cli exits.
+            // The supervisor then restarts it — same state, same crash, loop.
+            //
+            // Detection: tail the last 50 lines of the previous-run log for
+            // "Block not found". Scoping to `tail` (rather than full-log
+            // grep) avoids false positives from incidental API 404 responses
+            // during normal operation — a startup crash leaves the error
+            // near the end of the previous log, but normal operation flushes
+            // subsequent output after any incidental query 404.
+            //
+            // Recovery: rm -rf the chain-specific brk dir. Indexer rebuilds
+            // from genesis (~seconds on regtest with a handful of blocks).
+            //
+            // Regtest only. Mainnet/signet would need walk-back-through-
+            // stored-hashes inside brk_indexer (separate, larger fix);
+            // full re-index from genesis on mainnet would take days, so
+            // here we leave those chains alone and rely on manual recovery
+            // until that path is built.
             wsl_command: format!(
-                "mkdir -p {brk_dir} && BRK_BLOCK_MAGIC={brk_block_magic} \
+                "if [ '{chain}' = 'regtest' ] && [ -f {LOG_DIR_WSL}/btx-brk_cli.log ] && \
+                    tail -n 50 {LOG_DIR_WSL}/btx-brk_cli.log | grep -q 'Block not found'; then \
+                     echo '[brk_cli-recover] stale brk state vs bitcoind (dbcache rollback); wiping {brk_dir}'; \
+                     rm -rf {brk_dir}; \
+                 fi && \
+                 mkdir -p {brk_dir} && BRK_BLOCK_MAGIC={brk_block_magic} \
                  exec $HOME/.btx/bin/brk_cli \
                  --brkdir {brk_dir} \
                  --blocksdir {blocks_path} \

@@ -5,6 +5,26 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [0.2.18] — 2026-05-31 — brk_cli stale-state auto-recovery (regtest)
+
+A recurring developer-loop papercut: after the bundled regtest bitcoind crashes or restarts without
+a clean shutdown, dbcache rollback can drop it to a height below brk_cli's indexed tip. On the next
+brk_cli startup, its stored tip-hash is no longer in bitcoind's main chain, so
+`client.get_closest_valid_height(stored_tip_hash)?` propagates bitcoind RPC error `-5 "Block not
+found"` and brk_cli exits. The supervisor restarts it, same state, same crash — a hard loop that
+required manual `rm -rf ~/.btx/brk-regtest` four times in the previous session before any further
+work could proceed.
+
+- **Pre-flight log-tail detection + recovery.** Mirroring v0.2.6's ord stale-redb-lock recovery,
+  brk_cli's `wsl_command` now tails the last 50 lines of `/tmp/btx-brk_cli.log` before exec. If
+  `'Block not found'` appears AND the chain is regtest, it `rm -rf $HOME/.btx/brk-{chain}` and lets
+  the indexer rebuild from genesis (~seconds for a few hundred regtest blocks). The `tail -n 50`
+  scope avoids false positives from incidental API 404 responses during normal operation — a
+  startup crash leaves the error near the end of the previous log, but normal operation flushes
+  subsequent output after any incidental query 404. Regtest-only by design: a full re-index from
+  genesis on mainnet would take days, so signet/mainnet keep the manual-recovery path until a
+  walk-back-through-stored-hashes fix lands inside `brk_indexer` itself. (supervisor.rs)
+
 ## [0.2.3 → 0.2.12] — 2026-05-30 — bundled-app polish, self-healing, E2E proof
 
 A 10-commit run hardening the bundled Windows app (`app/`, Tauri shell + Rust supervisor) into a
