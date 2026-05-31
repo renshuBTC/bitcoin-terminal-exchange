@@ -37,27 +37,29 @@ Sandbox can't download the tarball + verify Core signing keys, so this is a host
 
 ```bash
 # 1. Download v30.2 tarball + the signed SHA256SUMS
-cd $HOME
-mkdir -p bitcoin-30.2-stage && cd bitcoin-30.2-stage
+cd $HOME && mkdir -p bitcoin-30.2-stage && cd bitcoin-30.2-stage
 curl -LO https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-x86_64-linux-gnu.tar.gz
 curl -LO https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
 curl -LO https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
 
-# 2. Import the Bitcoin Core release signing keys (see https://bitcoincore.org/en/download)
-#    If you already have them from a prior install, skip.
-curl -sSL https://api.github.com/repos/bitcoin-core/guix.sigs/contents/builder-keys \
-  | grep download_url | cut -d'"' -f4 | xargs -I{} curl -sL {} | gpg --import -
+# 2. (RECOMMENDED) Verify the GPG signature on SHA256SUMS. The canonical key-
+#    acquisition flow lives at https://bitcoincore.org/en/download/ — follow
+#    that page for the up-to-date trusted-key list rather than auto-importing
+#    via third-party mirrors. If you already have the Core release keys from
+#    a prior install, this step is just `gpg --verify SHA256SUMS.asc SHA256SUMS`.
+#    The pragmatic minimum (TLS + SHA256 only, no GPG) is to skip step 2 and
+#    rely on HTTPS to bitcoincore.org + the SHA256 check below — acceptable
+#    for a research build, NOT acceptable before shipping to real users.
 
-# 3. Verify SHA256SUMS signature, then the tarball checksum
-gpg --verify SHA256SUMS.asc SHA256SUMS                       # MUST show "Good signature"
+# 3. SHA256-verify the tarball against the published SHA256SUMS
 grep 'bitcoin-30.2-x86_64-linux-gnu.tar.gz$' SHA256SUMS | sha256sum -c -   # MUST say "OK"
 
-# 4. Extract and install into the path BTX's collect_linux_bins.sh expects
+# 4. Extract into the path BTX's collect_linux_bins.sh expects
 cd $HOME
 tar -xzf bitcoin-30.2-stage/bitcoin-30.2-x86_64-linux-gnu.tar.gz
 mv bitcoin-30.2 $HOME/bitcoin-30.2     # rename matches BTX_CORE_DIR default
 
-# 5. Re-stage the BTX bundle binaries (this also rebuilds brk_cli)
+# 5. Re-stage the BTX bundle binaries (this also rebuilds brk_cli + strips)
 cd /mnt/c/Users/Ren\ Shu/Documents/Claude/Projects/bitcoin-terminal-exchange/app
 bash scripts/collect_linux_bins.sh
 
@@ -197,6 +199,4 @@ self-healing across crashes/wedges, and chain state persists across closes. See
   call `window.destroy()` once every daemon has cleanly exited. Verified: bitcoind at block 202 with
   5100 BTC trusted + 3675 BTC immature → window-X close → all four daemons logged SIGTERM/stopped in
   reverse dep order → relaunch sees the same 202/5100/3675 state. (`a7863b5`, v0.2.5)
-- **ord stale-lock auto-recovery.** ord 0.27 sets an OPEN flag inside its `index.redb` when opening
-  the database and clears it on clean shutdown. After a SIGKILL or an internal wedge, the flag stays
-  set and the next ord process refuses to start with 
+- **ord stale-lock auto-recovery.*

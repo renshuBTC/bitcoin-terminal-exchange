@@ -897,7 +897,7 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
             wsl_command: format!(
                 "if [ '{chain}' = 'regtest' ] && [ -f {LOG_DIR_WSL}/btx-brk_cli.log ] && \
                     tail -n 50 {LOG_DIR_WSL}/btx-brk_cli.log | grep -q 'Block not found'; then \
-                     echo '[brk_cli-recover] stale brk state vs bitcoind (dbcache rollback); wiping {brk_dir}'; \
+                     echo \"[brk_cli-recover] stale brk state vs bitcoind (dbcache rollback); wiping {brk_dir}\"; \
                      rm -rf {brk_dir}; \
                  fi && \
                  mkdir -p {brk_dir} && BRK_BLOCK_MAGIC={brk_block_magic} \
@@ -1029,4 +1029,3 @@ async fn fetch_btxd_health() -> Option<(Option<u64>, Option<u64>)> {
         .ok()?
         .ok()?;
     let mut buf = Vec::with_capacity(1024);
-  

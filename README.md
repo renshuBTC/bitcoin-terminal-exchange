@@ -47,6 +47,12 @@ status and `BTX-decision-brief.md` for where it stands strategically.
 > addressed swap settled on regtest (ord-confirmed), and a live **cross-indexer consensus-hash match** on
 > a regtest book (independent Python reconstruction == Rust indexer). Not production-hardened, no
 > mainnet/economic testing. The order book is empty until orders are published.
+>
+> *(Bundle bumped to Bitcoin Core v30.2 on 2026-05-31 in v0.2.19. v30 default `datacarriersize` is
+> 100,000 bytes, so the v29.1-era OP_RETURN-non-relay observation above no longer holds against
+> default v30 nodes — but the envelope-on-mainnet default stays because operator-restricted nodes
+> setting `-datacarriersize=83` are still part of the network. See `BTX-mainnet-hardening.md` §1
+> for the full v30 implication.)*
 
 ## Web UI (open the HTML files in a browser, point them at a running `brk-btx` node)
 - `btx_trade.html` — the **trading terminal** (Hyperliquid-style): live order book with depth and
@@ -253,9 +259,4 @@ Two things are characterized honestly rather than hidden:
   *per-order* — a light client verifies a single served order against the committed root with a log-sized
   proof, no full node — and the **cumulative event hash** lets it follow the book incrementally and detect
   reorg/omission. The remaining gap (does the root correspond to the real chain?) is the only thing a
-  ZeroSync-style chain proof would close — tracked on the forward-looking watchlist in
-  `BTX-ecosystem-research.md`. To be precise about provenance: this commitment-plus-proof pattern is
-  **not novel** — RiemaLabs' Modular Indexer (Verkle checkpoints + challenge proofs) and OPI's verified
-  hashes pioneered verifiable meta-protocol indexing for BRC-20/Bitmap. BTX's contribution is applying
-  it to an on-chain *order book* with byte-identical Python/Rust/JS implementations, not inventing the
-  primitive.
+  ZeroSync-style chain proof would close — tracked on the forward-looking watchlist 
