@@ -322,15 +322,40 @@ impl Supervisor {
             None => return,
         };
 
-        let (cmd_str, port) = {
+        let (cmd_str, port, stop_pattern) = {
             let mut rt = arc.lock().await;
             if matches!(rt.state, State::Starting | State::Running) {
                 return;
             }
             rt.state = State::Starting;
             rt.stopping = false;
-            (rt.spec.wsl_command.clone(), rt.spec.ready_port)
+            (
+                rt.spec.wsl_command.clone(),
+                rt.spec.ready_port,
+                rt.spec.stop_pattern.clone(),
+            )
         };
+
+        // v0.2.14: pre-kill any stale process bound to this daemon's port.
+        // Without this, a leftover daemon from a prior btx-app session (which
+        // survives an uninstall/install cycle since the install only replaces
+        // the binary on disk, not the running process) keeps serving — the
+        // readiness probe below sees the port up and incorrectly reports
+        // "ready" without spawning the new binary. See the
+        // reference-stale-daemon-after-install memory; hit twice this session
+        // (btxd v0.2.7 / brk_cli v0.2.13). The pkill is a no-op on a fresh
+        // boot and adds only ~200ms otherwise.
+        let kill_cmd = stop_pattern.replace("SIG", "KILL");
+        let _ = wsl_command()
+            .args(["bash", "-c", &kill_cmd])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .spawn();
+        // Brief wait so the kernel releases the port before our new spawn
+        // tries to bind. Without this, the new daemon races the dying one
+        // and may fail with EADDRINUSE.
+        sleep(Duration::from_millis(300)).await;
 
         // Fire-and-forget WSL subprocess. Output is redirected inside
         // WSL to /tmp/btx-<name>.log so we can read it later.
