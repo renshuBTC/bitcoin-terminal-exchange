@@ -106,4 +106,6 @@ This is the same shape as the watchlist note added to `BTX-e2e-audit-results.md`
 
 ## Out of scope
 
-- **Walk-back runtime exercise.** This audit is static. Driving a real regtest scenario (mine blocks → SIGKILL bitcoind → restart and watch the walk-back path execu
+- **Walk-back runtime exercise.** This audit is static. Driving a real regtest scenario (mine blocks → SIGKILL bitcoind → restart and watch the walk-back path execute) is a separate task. The 5-case mental trace in this doc covers the cases I could enumerate; that's not the same as observing the path on a real chain.
+- **brk_computer warnings.** `cargo build --release -p brk_cli` produced 3 warnings (`brk_types::Sats` unused, `BLOCK_WINDOW_LEN` dead constant, `held_age_state` field unread). All pre-date today's commits and live in `brk_computer`, untouched by this work. Not BTX's bug, not BTX's fix.
+- **F2 + F3** as documented above.
