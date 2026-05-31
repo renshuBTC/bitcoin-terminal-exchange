@@ -98,6 +98,17 @@ pub struct DaemonSpec {
     pub ready_port: u16,
     /// Names of daemons that must be ready before this one starts.
     pub depends_on: Vec<&'static str>,
+    /// v0.2.15: when true, the supervisor never sends SIGTERM/SIGKILL to
+    /// this daemon (both the start_one pre-kill and stop_one's graceful
+    /// stop become no-ops). Used for bitcoind on mainnet with
+    /// datadir_override, where the user owns the bitcoind process — a
+    /// long-running production node we have no right to touch. The
+    /// supervisor still spawns its own `wsl_command` (which silently
+    /// fails to bind the in-use port) and uses the port-readiness probe
+    /// to confirm the user's bitcoind is up; same wait_for_port path that
+    /// caught the (formerly accidental) "piggyback on existing daemon"
+    /// behavior pre-v0.2.14.
+    pub externally_managed: bool,
 }
 
 pub struct DaemonRuntime {
@@ -317,12 +328,19 @@ impl Supervisor {
     }
 
     pub async fn start_one(&self, name: &str) {
+        // v0.2.15 LOW #5: if a shutdown started after this start_one was
+        // scheduled (e.g. wedge-detector queued a restart and the user
+        // clicked X mid-tick), don't bring the daemon back up.
+        if *self.shutting_down.lock().await {
+            return;
+        }
+
         let arc = match self.lookup(name).await {
             Some(a) => a,
             None => return,
         };
 
-        let (cmd_str, port, stop_pattern) = {
+        let (cmd_str, port, stop_pattern, externally_managed) = {
             let mut rt = arc.lock().await;
             if matches!(rt.state, State::Starting | State::Running) {
                 return;
@@ -333,6 +351,7 @@ impl Supervisor {
                 rt.spec.wsl_command.clone(),
                 rt.spec.ready_port,
                 rt.spec.stop_pattern.clone(),
+                rt.spec.externally_managed,
             )
         };
 
@@ -345,17 +364,24 @@ impl Supervisor {
         // reference-stale-daemon-after-install memory; hit twice this session
         // (btxd v0.2.7 / brk_cli v0.2.13). The pkill is a no-op on a fresh
         // boot and adds only ~200ms otherwise.
-        let kill_cmd = stop_pattern.replace("SIG", "KILL");
-        let _ = wsl_command()
-            .args(["bash", "-c", &kill_cmd])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .stdin(Stdio::null())
-            .spawn();
-        // Brief wait so the kernel releases the port before our new spawn
-        // tries to bind. Without this, the new daemon races the dying one
-        // and may fail with EADDRINUSE.
-        sleep(Duration::from_millis(300)).await;
+        //
+        // v0.2.15 CRITICAL #1: skip the pre-kill for externally-managed
+        // daemons (e.g. bitcoind on mainnet with datadir_override — the
+        // user owns that process, our broad `pkill -x bitcoind` would
+        // SIGKILL their production node).
+        if !externally_managed {
+            let kill_cmd = stop_pattern.replace("SIG", "KILL");
+            let _ = wsl_command()
+                .args(["bash", "-c", &kill_cmd])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .stdin(Stdio::null())
+                .spawn();
+            // Brief wait so the kernel releases the port before our new spawn
+            // tries to bind. Without this, the new daemon races the dying one
+            // and may fail with EADDRINUSE.
+            sleep(Duration::from_millis(300)).await;
+        }
 
         // Fire-and-forget WSL subprocess. Output is redirected inside
         // WSL to /tmp/btx-<name>.log so we can read it later.
@@ -408,7 +434,7 @@ impl Supervisor {
             None => return,
         };
 
-        let (stop_pattern, port) = {
+        let (stop_pattern, port, externally_managed) = {
             let mut rt = arc.lock().await;
             // v0.2.11: include State::Stopping in the early-return set.
             // Without it, a second CloseRequested mid-shutdown re-fires
@@ -421,8 +447,26 @@ impl Supervisor {
             }
             rt.state = State::Stopping;
             rt.stopping = true;
-            (rt.spec.stop_pattern.clone(), rt.spec.ready_port)
+            (
+                rt.spec.stop_pattern.clone(),
+                rt.spec.ready_port,
+                rt.spec.externally_managed,
+            )
         };
+
+        // v0.2.15 CRITICAL #1: if the daemon is externally managed (e.g.
+        // bitcoind on mainnet with datadir_override pointing at the
+        // user's Bitcoin Core), don't send any signal — the user owns
+        // that process and our broad `pkill -x bitcoind` would kill a
+        // production node we have no right to touch. Mark state Stopped
+        // immediately and return so the supervisor's shutdown loop moves on.
+        if externally_managed {
+            eprintln!("[supervisor] {name}: externally-managed, skipping signal");
+            let mut rt = arc.lock().await;
+            rt.state = State::Stopped;
+            rt.started_at = None;
+            return;
+        }
 
         // Graceful: SIGTERM.
         let term_cmd = stop_pattern.replace("SIG", "TERM");
@@ -749,6 +793,16 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
         _ => "",
     };
 
+    // v0.2.15 CRITICAL #1: on mainnet with datadir_override (M5b.6 wizard),
+    // the user owns the bitcoind process — a long-running production node
+    // that we must never SIGTERM/SIGKILL. With `externally_managed: true`
+    // the supervisor still spawns its own wsl_command (which silently fails
+    // to bind the in-use RPC port) and uses the port-readiness probe to
+    // confirm the user's bitcoind is reachable, but it never sends signals.
+    // For all other chains and for first-launch mainnet (no override yet),
+    // the bundled bitcoind is ours to manage.
+    let bitcoind_externally_managed = setup.datadir_override.is_some();
+
     let specs = vec![
         DaemonSpec {
             name: "bitcoind",
@@ -762,6 +816,7 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
             stop_pattern: "pkill -SIG -x bitcoind".to_string(),
             ready_port: rpc_port,
             depends_on: vec![],
+            externally_managed: bitcoind_externally_managed,
         },
         DaemonSpec {
             name: "brk_cli",
@@ -778,6 +833,7 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
             stop_pattern: "pkill -SIG -x brk_cli; pkill -SIG -x brk".to_string(),
             ready_port: 3140,
             depends_on: vec!["bitcoind"],
+            externally_managed: false,
         },
         DaemonSpec {
             name: "ord",
@@ -809,6 +865,7 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
             stop_pattern: "pkill -SIG -x ord".to_string(),
             ready_port: 3349,
             depends_on: vec!["bitcoind"],
+            externally_managed: false,
         },
         DaemonSpec {
             name: "btxd",
@@ -824,6 +881,7 @@ pub fn make_specs_from_setup(setup: &crate::install::Setup) -> (Vec<DaemonSpec>,
             stop_pattern: "pkill -SIG -f 'python3 btxd.py'".to_string(),
             ready_port: 3333,
             depends_on: vec!["bitcoind", "brk_cli", "ord"],
+            externally_managed: false,
         },
     ];
 
