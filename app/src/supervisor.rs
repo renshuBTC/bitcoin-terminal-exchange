@@ -1029,3 +1029,17 @@ async fn fetch_btxd_health() -> Option<(Option<u64>, Option<u64>)> {
         .ok()?
         .ok()?;
     let mut buf = Vec::with_capacity(1024);
+    timeout(Duration::from_secs(3), stream.read_to_end(&mut buf))
+        .await
+        .ok()?
+        .ok()?;
+    let raw = String::from_utf8_lossy(&buf);
+    // Split headers from body at the first blank line.
+    let body_start = raw.find("\r\n\r\n").map(|i| i + 4)
+        .or_else(|| raw.find("\n\n").map(|i| i + 2))?;
+    let body = &raw[body_start..];
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let ord_h = v.get("ord_height").and_then(|x| x.as_u64());
+    let btc_h = v.get("bitcoind_height").and_then(|x| x.as_u64());
+    Some((ord_h, btc_h))
+}
