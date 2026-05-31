@@ -238,26 +238,37 @@ impl Supervisor {
                     Some(pair) => pair,
                     None => continue, // btxd transient; don't reset trackers
                 };
+                // Use a single Instant for both updates this tick so the
+                // wedge condition `last_btc_advance > last_ord_advance`
+                // is strict-greater only when bitcoind genuinely moved
+                // more recently than ord, not by the microseconds
+                // between two sequential Instant::now() calls. Hit during
+                // v0.2.17 testing: post-restart same-tick observation
+                // would always set btc_advance microseconds after
+                // ord_advance, making btc_t > ord_t permanently true and
+                // triggering a spurious wedge 60s later even with no
+                // chain activity.
+                let now = Instant::now();
                 // Update ord advance tracking. First observation initializes
                 // both fields; subsequent observations only bump the advance
                 // time when the height actually changed.
                 if let Some(h) = ord_h {
                     if Some(h) != last_ord_h {
                         last_ord_h = Some(h);
-                        last_ord_advance = Some(Instant::now());
+                        last_ord_advance = Some(now);
                     } else if last_ord_advance.is_none() {
                         // Same height as before-but-after-reset, still our
                         // first observation in this state cycle. Anchor.
-                        last_ord_advance = Some(Instant::now());
+                        last_ord_advance = Some(now);
                     }
                 }
                 // Same for bitcoind.
                 if let Some(h) = btc_h {
                     if Some(h) != last_btc_h {
                         last_btc_h = Some(h);
-                        last_btc_advance = Some(Instant::now());
+                        last_btc_advance = Some(now);
                     } else if last_btc_advance.is_none() {
-                        last_btc_advance = Some(Instant::now());
+                        last_btc_advance = Some(now);
                     }
                 }
                 // Wedge condition (v0.2.16 form):
@@ -281,11 +292,20 @@ impl Supervisor {
                     let btc_s = last_btc_h
                         .map(|n| n.to_string())
                         .unwrap_or_else(|| "?".into());
+                    // v0.2.17: report time-since-bitcoind-overtook-ord
+                    // rather than ord_stall (which measured time since
+                    // ord's last height change — misleadingly long when
+                    // the chain was quiet for hours before bitcoind moved
+                    // ahead). btc_t is bitcoind's last advance instant;
+                    // since btc_t > ord_t (we just checked
+                    // btc_moved_more_recently), btc_t.elapsed() is the
+                    // duration the gap has actually existed.
+                    let wedge_duration = btc_t.elapsed();
                     eprintln!(
                         "[supervisor] ord wedged ({ord_s}, bitcoind={btc_s}, \
-                         ord stalled {}s while bitcoind kept advancing); \
+                         gap held for {}s while bitcoind kept advancing); \
                          restarting",
-                        ord_stall.as_secs()
+                        wedge_duration.as_secs()
                     );
                     sup.restart_one("ord").await;
                     // Reset trackers after restart so the new ord has time
