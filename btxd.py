@@ -953,9 +953,20 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return fn()
         except KeyError as e:
+            # KeyError on body[k] is a CLIENT error (missing field) — the field name is the
+            # client's own input, not internal state, so echoing it back is safe.
             self._send({"error": f"missing field {e}"}, 400)
         except Exception as e:  # noqa
-            self._send({"error": type(e).__name__, "detail": str(e)}, 500)
+            # F1 (BTX-btxd-audit-2026-05-31): log detail to stderr (operators need it for
+            # debugging) but DROP it from the client response. str(e) on arbitrary exceptions
+            # can leak file paths (FileNotFoundError/PermissionError embed the path), bitcoin-cli
+            # RPC error fragments (passed through verbatim by bcli), cookie file paths on auth
+            # failures, and subprocess stderr fragments. btxd is loopback-only so an unauth'd
+            # remote can't reach this, but any local process can — useful for fingerprinting
+            # ahead of a different attack. Keep the exception TYPE in the response so the GUI
+            # can render a distinct error class; drop the message.
+            sys.stderr.write(f"btxd: handler {type(e).__name__}: {str(e)[:500]}\n")
+            self._send({"error": "internal error", "type": type(e).__name__}, 500)
         return None
 
     def do_GET(self):
@@ -1071,11 +1082,25 @@ class Handler(BaseHTTPRequestHandler):
             if name not in {"bitcoind", "brk_cli", "ord", "btxd"}:
                 return self._send({"error": "unknown daemon"}, 400)
             def _tail():
+                # F2 (BTX-btxd-audit-2026-05-31): tail-read from the END of the log with a hard
+                # byte budget. The naive f.readlines() reads the WHOLE file into memory before
+                # slicing to [-n:] — a buggy daemon writing a multi-GB log would OOM btxd. Cap
+                # at 2 MB (~4000 typical log lines), well above n=2000 worth of content but
+                # bounded regardless of how big the underlying log grows.
                 path = f"/tmp/btx-{name}.log"
                 try:
-                    with open(path, "r") as f:
-                        lines = f.readlines()
-                    return {"lines": [l.rstrip("\n") for l in lines[-n:]]}
+                    with open(path, "rb") as f:
+                        f.seek(0, 2)
+                        size = f.tell()
+                        budget = min(size, 2 * 1024 * 1024)
+                        f.seek(size - budget, 0)
+                        buf = f.read(budget).decode("utf-8", errors="replace")
+                    lines = buf.splitlines()
+                    # If we started mid-line (budget < size), drop the partial first line — it
+                    # would be unreadable on its own and the caller is asking for COMPLETE lines.
+                    if budget < size and lines:
+                        lines = lines[1:]
+                    return {"lines": lines[-n:]}
                 except OSError:
                     return {"lines": []}
             return self._guard(lambda: self._send(_tail()))
