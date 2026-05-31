@@ -4,6 +4,15 @@ Companion to [`BTX-end-to-end-audit-prompts.md`](./BTX-end-to-end-audit-prompts.
 
 **Audit closed 2026-05-28: 14 of 14 prompts empirically green, no PASS-by-equivalence.**
 
+> *Watchlist update 2026-05-31:* Prompt 10's PASS was empirical against Bitcoin Core v29.1 default
+> policy. Bitcoin Core v30 shipped 2025-10-10 with the default `datacarriersize` raised from 83 bytes
+> to 100,000 bytes and multiple OP_RETURN outputs allowed per tx. Under v30 default policy the same
+> `OP_RETURN 100B` test would now return `allowed=true` — the policy boundary moved from ~83 bytes to
+> 100,000 bytes. The v29.1 result remains accurate as a frozen snapshot of v29.1 behavior, and the
+> envelope-on-mainnet recommendation still holds because operator-restricted nodes (Knots-style
+> `-datacarriersize=83`) are still part of the network. See `BTX-mainnet-hardening.md` §1 for the
+> full v30 implication; bundled bitcoind is still v29.1.0.
+
 Every load-bearing safety property of BTX has been verified by running real code against real inputs — the Rust indexer's parse + sig-verify chain, the maker's rune-backing check against a real ord 0.27.1 oracle, the JS Merkle verifier's tamper detection in a real browser, mempool acceptance under stock Bitcoin Core v29.1 policy, and propagation across public signet to nodes outside our config control.
 
 Each prompt's commit message contains the full empirical evidence; this document is the index.
@@ -64,8 +73,4 @@ For transparency, the limits of these results:
 
 - **Mainnet behavior.** All on-chain runs were regtest + public signet. Bitcoin mainnet policy is not measurably different from signet for these carriers (both inherit Core v29.1 defaults), but no mainnet broadcast happened.
 - **Adversarial network-level behavior.** Mempool-sniping by a competing taker tx with higher fee is a separate threat model, addressed by the opt-in addressed-swap mode (proven live separately in earlier work; see [`BTX-threat-model.md`](./BTX-threat-model.md)). The open SIGHASH_SINGLE|ANYONECANPAY carrier is intentionally fillable by anyone, which is the design goal — sniping immunity is a *user-mode choice* (addressed-only) not a *protocol property*.
-- **Long-running production load.** No multi-day, high-volume stress tests. Property fuzz reaches 1.8M cases but each is bounded.
-- **All carriers in all policy environments.** Only OP_RETURN (≤80B) and the Taproot script-path witness envelope were tested. Other potential carriers (e.g. SegWit script field tricks, OP_RETURN ≤83B with `-datacarriersize` flag) were not in scope.
-- **Wallet-software-specific edge cases.** All maker-sign and taker-fill work goes through `btx_wallet.py` against Bitcoin Core's wallet. Third-party wallet integration (Sparrow, BlueWallet, hardware signers) is not covered.
-
-These are documented to set expectations, not to weaken the result. The 14 properties that ARE proven are the ones that determine whether BTX is safe to ship as a peer-to-peer DEX on Bitcoin.
+- **Long-running production load.** No mult

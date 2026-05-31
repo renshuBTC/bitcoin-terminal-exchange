@@ -51,9 +51,17 @@ freshly-restarted regtest node (`error -26 scriptpubkey`).
 witness-envelope carrier (`btx_envelope_publish.py`) puts the artifact in witness data, which is not
 subject to `datacarriersize`, so it propagates under default relay policy (this is why the envelope
 path was built — "No `-datacarriersize` needed"). **Residual:** the maker pays for a commit + reveal
-(two txs) instead of one. Acceptable and correct. *(Note: recent Bitcoin Core has debated relaxing the
-OP_RETURN limit, but cross-network relay + miner acceptance of large OP_RETURN is not something BTX
-should assume; envelope is the safe default.)*
+(two txs) instead of one. Acceptable and correct.
+
+*(2026-05-31 watchlist update: Bitcoin Core v30 shipped on 2025-10-10 with default `datacarriersize`
+raised from 83 bytes to 100,000 bytes and multiple OP_RETURN outputs per tx allowed by default. On a
+network of v30-default nodes the ~190–208-byte BTX OP_RETURN would relay; but operators are free to
+override with `-datacarriersize=83` to keep pre-v30 behavior, and a non-trivial slice of the network
+runs Knots-style policy with the smaller limit. So the envelope-on-mainnet default stays — it is
+correct against the worst-case node policy you might hit, not just the optimistic v30-default case.
+BTX no longer needs the relaxed datacarrier for relay, but still doesn't depend on it. Bundled
+bitcoind is still v29.1.0 in the current installer; bumping to v30 is a candidate for v0.2.19 and is
+tracked separately.)*
 
 ### 2. Offer lock is in-memory — lost on wallet restart  *(HIGH — fixed 2026-05-27)*
 
@@ -250,10 +258,4 @@ lookup, u64 amount bound), and the two local/client surfaces from the threat-mod
 DNS-rebinding `Host:` guard, terminal `innerHTML` escaping). On the protocol side, what's left is
 *operational discipline*, not code: keep the node + ord synced, review fees, wait for confirmations.
 BTX's self-custody, no-escrow design means the *protocol* failure modes were always "an order doesn't
-propagate / gets stuck / is dropped," never "a counterparty steals funds"; the one surface that could
-have driven *unauthorized* wallet activity (DNS rebinding) is now closed. **Net: no remaining BLOCKER,
-HIGH, MEDIUM, or LOW item — mainnet readiness is now gated on a real economic/liquidity decision, not on
-missing safety code.** (The Python protocol changes are confirmed by `btx_test_all.py` — 10/10 green;
-the indexer change by `cargo test -p brk_indexer`; the btxd `Host:` guard by an isolated logic test
-and the terminal `esc()` by a behavior test, since the sandbox can't load the live btxd/HTML under
-mount-lag.)
+prop

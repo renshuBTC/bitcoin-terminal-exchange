@@ -5,6 +5,31 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [docs 2026-05-31] — Bitcoin Core v30 OP_RETURN policy: BTX implications
+
+Doc-only update resolving the [VERIFY] watchlist tag left in `btx_carrier.py` about 2026 carrier
+standardness. Bitcoin Core v30 shipped 2025-10-10 with the default `datacarriersize` raised from 83
+bytes to 100,000 bytes and multiple OP_RETURN outputs per tx allowed. For BTX (~208-byte v2
+artifact):
+
+- **OP_RETURN carrier** now relays under v30 default policy with massive headroom (was rejected
+  under v29.1 default at 83 bytes). No code change — the artifact size hasn't moved.
+- **Envelope carrier** (Taproot script-path witness, `btx_envelope_publish.py`) is unaffected; not
+  subject to `datacarriersize` at all.
+- **Envelope stays the mainnet default in `btxd.h_order_create`.** Operators can still set
+  `-datacarriersize=83` to keep pre-v30 behavior (Knots-style configurations), so envelope is the
+  policy-safest choice for cross-node relay guarantees. BTX no longer *needs* the relaxed
+  datacarrier, but doesn't *depend* on v30 either.
+- **E2E Prompt 10's PASS is now a frozen v29.1 snapshot.** Under v30 default, the same `OP_RETURN
+  100B` probe would flip to `allowed=true`; the v29.1 boundary observation is still accurate for
+  v29.1.
+- **Bundled bitcoind is still v29.1.0.** Bumping the bundled Core to v30 is a candidate for v0.2.19
+  and tracked separately.
+
+Updated: `btx_carrier.py` doc-comment (removed [VERIFY]), `BTX-mainnet-hardening.md` §1
+(replaced "recent Bitcoin Core has debated" parenthetical with v30 watchlist note),
+`BTX-e2e-audit-results.md` (v30 watchlist note above the result matrix).
+
 ## [0.2.18] — 2026-05-31 — brk_cli stale-state auto-recovery (regtest)
 
 A recurring developer-loop papercut: after the bundled regtest bitcoind crashes or restarts without
@@ -163,28 +188,4 @@ two startup-robustness gaps. See `BTX-threat-model.md` and `BTX-mainnet-hardenin
 
 ### Verification
 
-- Offline suite `btx_test_all.py`: **10/10 green**.
-- Indexer tests `cargo test -p brk_indexer btx`: **23/23 pass** (incl. a new corrupt-store
-  no-panic test over every sub-minimum buffer length).
-- Confirmed exhaustively (not spot-checked): all six `subprocess.run` sites pass arg-lists; no
-  `shell=True` anywhere.
-
-## [0.1.0] — 2026-05 — research-preview baseline
-
-Initial server-less, on-chain order-book DEX for Bitcoin. Proven end-to-end on regtest, custom signet,
-and public signet (Bitcoin Core v29.1).
-
-- Maker pre-signs an offer (`SIGHASH_SINGLE|ANYONECANPAY`) as an on-chain artifact; any taker fills it
-  in a single native Bitcoin transaction. No exchange, relay, server, escrow, or BTX token.
-- Carriers: OP_RETURN and Taproot witness-envelope (commit/reveal); envelope is the mainnet default
-  (not subject to `datacarriersize`). Cross-node propagation demonstrated on public signet (2026-05-24).
-- Batch fills (one taker sweeps many offers in one tx); rune↔BTC open orders; rune↔rune via the
-  addressed (interactive, snipe-resistant) path.
-- `brk-btx` indexer reconstructs the book from chain and serves an order-set-independent consensus
-  hash; an independent Python reconstruction and the Rust indexer produced byte-identical hashes on
-  real chain data.
-- `btxd` localhost orchestrator + Hyperliquid-style `btx_trade.html` terminal; signing always
-  through the user's own Bitcoin Core wallet. One-download Linux/WSL bundle via `package-linux.sh`.
-
-[0.1.1]: https://github.com/renshuBTC/bitcoin-terminal-exchange/releases/tag/v0.1.1
-[0.1.0]: https://github.com/renshuBTC/bitcoin-terminal-exchange/tree/v0.1.0
+- Offline suite `btx_test_all.p

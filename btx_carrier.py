@@ -6,10 +6,19 @@ The BTX reconstruction layer reads the *artifact bytes*; it does not care how th
 on-chain. This module gives two interchangeable carriers so the protocol does NOT depend on a
 relaxed -datacarriersize:
 
-  1. OP_RETURN carrier        — one output, `OP_RETURN <artifact>`. Simplest, but the ~208-byte
-                                BTX v2 artifact exceeds the default 80-byte datacarrier limit, so
-                                this needs a node configured with -datacarriersize>=240 (the spec
-                                marks 2026 carrier standardness as [VERIFY]).
+  1. OP_RETURN carrier        — one output, `OP_RETURN <artifact>`. Simplest. The ~208-byte BTX v2
+                                artifact exceeds the historical 83-byte `datacarriersize` standardness
+                                limit that Core enforced through v29.x, so on v29 default policy this
+                                tx does not relay across stock third-party nodes (only the publisher's
+                                own node, which the bundle starts with `-datacarriersize=240`, accepts
+                                it locally). Bitcoin Core v30 (released 2025-10-10) raised the default
+                                to 100,000 bytes and allowed multiple OP_RETURN outputs per tx, so
+                                under v30 default policy a 208-byte artifact relays with massive
+                                headroom. Operators are still free to set `-datacarriersize=83` to
+                                restore pre-v30 behavior (e.g. Knots-style configurations), so the
+                                envelope path below remains the safe default for cross-node
+                                propagation guarantees. v30 facts confirmed via release-notes search
+                                2026-05-31 (BTX-watchlist refresh).
 
   2. Taproot witness envelope — inscription-style. The artifact rides in a tapscript inside the
                                 WITNESS of a Taproot script-path spend:
@@ -123,21 +132,4 @@ def selftest():
     checks["small_roundtrip"] = (parse_envelope(bytes(env)) == small)
     checks["small_single_chunk"] = (len(small) <= MAX_CHUNK)
     # 2) large artifact spanning multiple 520-byte chunks
-    large = MAGIC + b'\x5a' * 1300                          # 1304 bytes -> 3 chunks
-    envL = envelope_tapscript(large)
-    checks["large_roundtrip"] = (parse_envelope(bytes(envL)) == large)
-    checks["large_multichunk"] = (len(large) > 2 * MAX_CHUNK)
-    # 3) non-envelope script returns None
-    checks["non_envelope_is_none"] = (parse_envelope(bytes(op_return_carrier(small))) is None)
-    # 4) tapleaf hash is 32 bytes and deterministic
-    h1 = tapleaf_hash(env); h2 = tapleaf_hash(env)
-    checks["tapleaf_32_bytes"] = (len(h1) == 32 and h1 == h2)
-    # 5) the extracted payload still begins with the BTX magic
-    checks["payload_keeps_magic"] = (parse_envelope(bytes(env))[:4] == MAGIC)
-    allpass = all(v is True for v in checks.values())
-    print(json.dumps({"checks": checks, "tapleaf_hex": h1.hex(), "ALL_PASS": allpass}, indent=2))
-    return allpass
-
-
-if __name__ == "__main__":
-    selftest()
+    large = MAG
