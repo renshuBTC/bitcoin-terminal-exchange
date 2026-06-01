@@ -60,8 +60,9 @@ override with `-datacarriersize=83` to keep pre-v30 behavior, and a non-trivial 
 runs Knots-style policy with the smaller limit. So the envelope-on-mainnet default stays — it is
 correct against the worst-case node policy you might hit, not just the optimistic v30-default case.
 BTX no longer needs the relaxed datacarrier for relay, but still doesn't depend on it. Bundled
-bitcoind is still v29.1.0 in the current installer; bumping to v30 is a candidate for v0.2.19 and is
-tracked separately.)*
+bitcoind is now **v30.2** as of v0.2.19 (shipped 2026-05-31, see CHANGELOG.md). v30.0 and v30.1 were
+RECALLED by Core devs over a wallet-deletion bug; v30.2 fixed that on 2026-01-10. The envelope
+carrier remains the safe default regardless — it's policy-independent.)*
 
 ### 2. Offer lock is in-memory — lost on wallet restart  *(HIGH — fixed 2026-05-27)*
 

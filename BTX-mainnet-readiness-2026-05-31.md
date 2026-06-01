@@ -93,12 +93,14 @@ search loop) costs more code than it saves. Tracked in `BTX-v0.2.18-19-audit.md`
 
 **Next step:** none. Documented as intentional.
 
-### E3 — Bundled bitcoind is v29.1 source-bumped to v30.2 (binary swap pending)
+### E3 — Bundled bitcoind v29.1 → v30.2 ✓ DONE (binary swap completed by B1)
 
-The v0.2.19 commit (`2e514c9`) updates `collect_linux_bins.sh` and the recipe docs to v30.2, but
-the binary in `app/bin/linux/` is still v29.1.0. Resolved by B1.
+The v0.2.19 commit (`2e514c9`) updated `collect_linux_bins.sh` + recipe docs to v30.2, and the
+actual binary swap landed when B1 produced the v0.2.19 NSIS installer (B1 ✓). The installed
+bundle now has `bitcoind` and `bitcoin-cli` at v30.2.0 — confirmed via VERSIONS.txt and SHA256SUMS
+cross-check (2026-06-01: bundled brk_cli sha d131dc42… matches installed and repo copies).
 
-**Next step:** see B1.
+**Next step:** none.
 
 ### E4 — Walk-back ancestor lookup has no unit test
 
