@@ -22,3 +22,4 @@ btx_adversarial_book_corpus.json
 # Session-driver scripts (B2/B3/B4 phase runners; regenerable from runbooks)
 run_b*_phase.sh
 run_btx_reorg.sh
+_etch_state_test.json
