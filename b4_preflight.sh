@@ -16,15 +16,31 @@ set -u
 
 # ---- defaults; override via env ----
 BTX_BIN=${BTX_BIN:-$HOME/.btx/bin}
-BTX_DATADIR=${BTX_DATADIR:-$HOME/.bitcoin}    # standard mainnet datadir
+BTX_DATADIR=${BTX_DATADIR:-$HOME/.bitcoin}    # standard mainnet datadir (datadir mode)
 BTX_WALLET=${BTX_WALLET:-btx}
 BTX_REPO=${BTX_REPO:-/mnt/c/Users/Ren Shu/Documents/Claude/Projects/bitcoin-terminal-exchange}
+
+# External-RPC mode (talks to a bitcoind running on a different host, e.g. Windows-side
+# bitcoin-qt from WSL). If BTX_RPCCONNECT is set, the script uses -rpcconnect/-rpcport/
+# -rpcuser/-rpcpassword instead of -datadir. Matches the EXTERNAL_RPC pattern in
+# btx-launch.sh (project_btx_mainnet_bringup_2026-05-29).
+BTX_RPCCONNECT=${BTX_RPCCONNECT:-}
+BTX_RPCPORT=${BTX_RPCPORT:-8332}
+BTX_RPCUSER=${BTX_RPCUSER:-}
+BTX_RPCPASSWORD=${BTX_RPCPASSWORD:-}
 
 # Cost ceiling: the absurd-price order's offer + fees should be tiny.
 MAX_OFFER_SATS=${MAX_OFFER_SATS:-10000}      # warn if picked UTXO > 10k sats
 
 BCLI_BIN="$BTX_BIN/bitcoin-cli"
-BCLI="$BCLI_BIN -datadir=$BTX_DATADIR -rpcwallet=$BTX_WALLET"
+if [ -n "$BTX_RPCCONNECT" ]; then
+    # External-RPC mode
+    BCLI="$BCLI_BIN -rpcconnect=$BTX_RPCCONNECT -rpcport=$BTX_RPCPORT -rpcuser=$BTX_RPCUSER -rpcpassword=$BTX_RPCPASSWORD -rpcwallet=$BTX_WALLET"
+    printf '\n==> Mode: EXTERNAL_RPC to %s:%s as user=%s wallet=%s\n' "$BTX_RPCCONNECT" "$BTX_RPCPORT" "$BTX_RPCUSER" "$BTX_WALLET"
+else
+    # Datadir / cookie mode
+    BCLI="$BCLI_BIN -datadir=$BTX_DATADIR -rpcwallet=$BTX_WALLET"
+fi
 
 FAILS=0
 WARNS=0
