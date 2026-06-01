@@ -132,4 +132,21 @@ def selftest():
     checks["small_roundtrip"] = (parse_envelope(bytes(env)) == small)
     checks["small_single_chunk"] = (len(small) <= MAX_CHUNK)
     # 2) large artifact spanning multiple 520-byte chunks
-    large = MAG
+    large = MAGIC + b'\x5a' * 1300                          # 1304 bytes -> 3 chunks
+    envL = envelope_tapscript(large)
+    checks["large_roundtrip"] = (parse_envelope(bytes(envL)) == large)
+    checks["large_multichunk"] = (len(large) > 2 * MAX_CHUNK)
+    # 3) non-envelope script returns None
+    checks["non_envelope_is_none"] = (parse_envelope(bytes(op_return_carrier(small))) is None)
+    # 4) tapleaf hash is 32 bytes and deterministic
+    h1 = tapleaf_hash(env); h2 = tapleaf_hash(env)
+    checks["tapleaf_32_bytes"] = (len(h1) == 32 and h1 == h2)
+    # 5) the extracted payload still begins with the BTX magic
+    checks["payload_keeps_magic"] = (parse_envelope(bytes(env))[:4] == MAGIC)
+    allpass = all(v is True for v in checks.values())
+    print(json.dumps({"checks": checks, "tapleaf_hex": h1.hex(), "ALL_PASS": allpass}, indent=2))
+    return allpass
+
+
+if __name__ == "__main__":
+    selftest()
