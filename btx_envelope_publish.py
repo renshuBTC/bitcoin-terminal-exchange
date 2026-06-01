@@ -181,8 +181,13 @@ def cmd_publish(a):
         # 3) broadcast the reveal (the commit is already in the mempool from sendtoaddress)
         if a.broadcast:
             res["reveal_txid"] = cli("sendrawtransaction", res["reveal_hex"])
-    except Exception as e:
-        recovery["error"] = f"reveal failed after commit {commit_txid} was broadcast: {e}"
+    # Catch BaseException (not just Exception) so KeyboardInterrupt (Ctrl+C) between the
+    # commit broadcast and the reveal broadcast ALSO triggers the recovery print. Without
+    # this, hitting Ctrl+C after `sendtoaddress` succeeds would let the ephemeral seckey
+    # fall out of scope unprinted, permanently stranding the commit's funds. See
+    # BTX-envelope-publish-audit-2026-06-01.md F1.
+    except BaseException as e:
+        recovery["error"] = f"reveal failed/interrupted after commit {commit_txid} was broadcast: {type(e).__name__}: {e}"
         recovery["recovery"] = (
             "commit funds are spendable ONLY by seckey_hex above; recover with: "
             "btx_envelope_publish.py publish-reveal --seckey <seckey_hex> --artifact-hex <artifact> "

@@ -50,7 +50,19 @@ At current fee market (verify), 1 sat/vB is the relay floor.
 
 ## The runbook
 
-### Step 0 — set the WSL environment
+### Step 0a — automated pre-flight (recommended)
+
+```bash
+cd /mnt/c/Users/Ren\ Shu/Documents/Claude/Projects/bitcoin-terminal-exchange
+bash b4_preflight.sh
+```
+
+This runs 8 checks (chain=main, sync state, wallet balance, P2WPKH UTXO available,
+fee market, mempool.space reachable, publisher selftest, stale state files) and
+returns GREEN/YELLOW/RED. Don't proceed past Step 4 unless GREEN. The script
+respects env vars `BTX_BIN`, `BTX_DATADIR`, `BTX_WALLET`, `MAX_OFFER_SATS`.
+
+### Step 0b — set the WSL environment
 
 ```bash
 # Adjust BIN if your mainnet bitcoind binary lives elsewhere
@@ -83,14 +95,20 @@ OFFER_VOUT=<paste>
 ```bash
 # Pick a deliberately non-existent rune ID. The rune ID is (block, tx_index).
 # Real mainnet runes started at block 840000 and grow over time. We pick a
-# rune ID FROM THE FUTURE so nothing matches on mainnet. The carrier still
-# publishes the artifact bytes regardless of whether the rune exists.
+# rune_block FROM THE FUTURE so nothing matches on mainnet. The carrier
+# still publishes the artifact bytes regardless of whether the rune exists.
+#
+# IMPORTANT: rune_tx is a u16 in the artifact wire format (max 65535), so
+# pick a tx index that fits. The block far in the future is what guarantees
+# non-existence; the tx index inside that block just has to be valid u16.
+# Using rune_tx=1 (a real-looking tx index) is fine because rune_block=9999999
+# alone makes the rune impossible.
 python3 btx_wallet.py maker-sign \
   --bitcoin-cli "$BIN/bitcoin-cli" --chain main --datadir "$DD" --wallet btx \
   --offer-txid "$OFFER_TXID" --offer-vout "$OFFER_VOUT" \
   --price-btc 1.0 \
   --amount-units 1 \
-  --rune-block 9999999 --rune-tx 99999 \
+  --rune-block 9999999 --rune-tx 1 \
   --carrier envelope
 # -> JSON with "artifact_hex": "42545831..." — copy it into a variable:
 ARTIFACT_HEX=<paste from JSON>
