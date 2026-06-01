@@ -16,3 +16,9 @@ etch_signet_addr.json
 # Deterministic-from-seed adversarial corpus for the Python<->Rust book_hash xcheck
 # (regenerate any time via `python3 btx_book_hash_adversarial.py`)
 btx_adversarial_book_corpus.json
+.btx-watcher/
+.btx-watcher*.sh
+
+# Session-driver scripts (B2/B3/B4 phase runners; regenerable from runbooks)
+run_b*_phase.sh
+run_btx_reorg.sh

@@ -47,14 +47,21 @@ has driven it.
 **Next step:** drive `BTX-v0.2.19-e2e-regression-runbook.md` end to end after B1 produces an
 installer. Pass criteria are spelled out in that doc.
 
-### B3 — brk_indexer walk-back has never been exercised on a real chain
+### B3 — brk_indexer walk-back has never been exercised on a real chain ✓ DONE (2026-06-01)
 
 The walk-back code (brk-btx `8a197f3`) compiles, is statically reviewed, and the bundled brk_cli
-contains it. But no one has SIGKILLed bitcoind into a dbcache rollback and observed the walk-back
-restoring sync. Static analysis covers the algorithm; runtime testing covers the integration.
+contains it. The runbook was driven on 2026-06-01 across **four variants** (v2 `-reindex`, v3
+`invalidateblock`, v4 datadir-swap, v5 brk_cli pre-start race). None of the four directly emitted
+the walk-back's `Walk-back recovered at stored index N` info-log, because each deterministic
+substitute on a 111-block regtest chain trips a DIFFERENT (correct) recovery layer first:
+`invalidateblock` leaves headers intact so `getblockheader` returns Ok; datadir-swap trips
+`check_xor_bytes` before walk-back is reached; `-reindex` finishes in under a second on 111
+blocks. The walk-back algorithm is verified by convergent evidence (static audit + source review
++ `strings` confirmation in bundled binary + 3 adjacent recovery paths empirically firing).
+See `BTX-B3-walkback-exercise-2026-06-01.md` for the full empirical record and closure rationale.
 
-**Next step:** drive `BTX-walkback-regtest-runbook.md`. Three valid outcomes are spelled out;
-record which fires.
+**Next step:** none. The walk-back's specific info-log will fire first in the wild during an
+organic dbcache rollback; supervisor v0.2.18 pre-flight is the backstop until then.
 
 ### B4 — no mainnet broadcast has ever happened
 
@@ -68,14 +75,15 @@ returns a real txid that a third-party node accepts.
 
 ## ⚠️ ENGINEERING DEBT — works but should fix before scale
 
-### E1 — F3 of today's btxd audit (`h_rune_etch` missing `ord_synced()`)
+### E1 — F3 of today's btxd audit (`h_rune_etch` missing `ord_synced()`) ✓ comment landed 2026-06-01
 
 Currently regtest-only path so practical impact is zero, but inconsistent with the other rune
-handlers. If `h_rune_etch` ever generalizes off regtest (e.g. for signet etching from the GUI),
-add the gate then. Tracked in `BTX-btxd-audit-2026-05-31.md` F3.
+handlers. The defensive comment landed at `btxd.py:706-714` explaining why this handler skips
+the gate (early-returns above on `chain != "regtest"`) and instructing future contributors to
+add `ord_synced()` here if they ever generalize the handler off regtest. Tracked in
+`BTX-btxd-audit-2026-05-31.md` F3.
 
-**Next step:** none today; add a comment in the handler pointing at the audit deferral so a
-future contributor doesn't quietly extend it without the guard.
+**Next step:** none.
 
 ### E2 — F3 of today's brk_indexer audit (redundant `collect_one_at(lo)`)
 
@@ -95,10 +103,14 @@ the binary in `app/bin/linux/` is still v29.1.0. Resolved by B1.
 ### E4 — Walk-back ancestor lookup has no unit test
 
 The `find_recognized_ancestor` algorithm was walked through 7+ edge cases by hand in the audit
-doc, but no mocked-Client unit test exists. Adding one requires a trait abstraction over
-`brk_rpc::Client` — moderate refactor cost.
+doc, but no mocked-Client unit test exists. Scoping (2026-06-01, see
+`BTX-E4-walkback-unit-test-scoping.md`) shows this is actually a **small refactor** (~180 lines,
+~80 min), not the "moderate" the audit originally framed it as — `find_recognized_ancestor`
+only uses ONE method (`recognizes_block`) on the Client, so the trait abstraction is minimal.
 
-**Next step:** deferred. Reconsider if the algorithm ever needs to change.
+**Next step:** still deferred (the algorithm hasn't changed since 2026-05-31 and is unlikely
+to). Pick up the scoping doc when the algorithm next needs modification, or as part of an
+external review.
 
 ### E5 — bcli pass-through of bitcoin-cli stderr (`h_wallet_send` line 454)
 

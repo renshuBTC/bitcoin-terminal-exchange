@@ -705,6 +705,15 @@ def h_rune_etch(body):
         rune = body["rune"].upper()
         # rule #4 (name-already-etched) needs the ord oracle, so it lives here rather than in
         # btx_etch. If ord already knows this rune, etching it again would only cenotaph — refuse.
+        #
+        # NOTE (BTX-btxd-audit-2026-05-31.md F3, deferred): unlike h_order_create / h_addressed_propose
+        # / h_rune_propose / h_rune_countersign, this handler does NOT call ord_synced() before the
+        # lookup. That gate IS load-bearing on signet/mainnet — a lagging ord can 404 on an
+        # already-etched rune, letting the caller etch a name that ends up as a cenotaph (BTC wasted
+        # on commit + reveal). It is safe to skip ONLY because this handler early-returns above for
+        # any chain != "regtest", and on regtest ord is trivially synced (tiny chain, no mempool lag).
+        # If this handler is ever generalized off regtest, ADD `if not ord_synced(): return …` here
+        # before the ord_get, mirroring the other rune handlers.
         try:
             existing = ord_get(f"/rune/{rune}")
             if existing and existing.get("id"):

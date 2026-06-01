@@ -15,7 +15,7 @@ the codebase, this is for net-new issues.
 |---|----------|------|---------|--------|
 | F1 | LOW–MEDIUM | info leak | `Handler._guard` returns `str(e)` for any non-`KeyError` exception → leaks file paths, RPC error fragments, subprocess strings to the client | **fixed** below |
 | F2 | LOW | DoS | `/api/supervisor/logs` calls `readlines()` on the WHOLE log file before slicing to `[-n:]` — a buggy daemon writing a multi-GB log can OOM btxd | **fixed** below |
-| F3 | VERY LOW | consistency | `h_rune_etch` does an `ord_get("/rune/<NAME>")` lookup without calling `ord_synced()` first, unlike the other rune handlers. Regtest-only path, so practical impact ~zero | deferred — flag for future cleanup |
+| F3 | VERY LOW | consistency | `h_rune_etch` does an `ord_get("/rune/<NAME>")` lookup without calling `ord_synced()` first, unlike the other rune handlers. Regtest-only path, so practical impact ~zero | **comment landed 2026-06-01** (btxd.py:706-714) flagging the deferral; add `ord_synced()` if/when h_rune_etch generalizes off regtest |
 
 ## Strengths worth recording
 

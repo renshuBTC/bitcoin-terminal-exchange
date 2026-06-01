@@ -38,9 +38,9 @@ sleep 1
 
 # Optional: wipe and start clean so we have a deterministic chain. ONLY on regtest;
 # never run this on signet/mainnet datadir.
-rm -rf $HOME/.btx/regtest        # bitcoind regtest datadir
+rm -rf $HOME/.btx/data/regtest        # bitcoind regtest datadir
 rm -rf $HOME/.btx/brk-regtest    # brk_cli regtest state
-rm -rf $HOME/.btx/ord/regtest    # ord regtest index
+rm -rf $HOME/.btx/data/regtest/ord    # ord regtest index (under data/regtest in v0.2.18+)
 rm -f  /tmp/btx-*.log
 ```
 
@@ -51,8 +51,8 @@ wizard if it offers; otherwise launch as normal and confirm the active chain by:
 
 ```bash
 # WSL
-$HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/regtest \
-  -rpccookiefile=$HOME/.btx/regtest/regtest/.cookie getblockchaininfo \
+$HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/data/regtest \
+  -rpccookiefile=$HOME/.btx/data/regtest/regtest/.cookie getblockchaininfo \
   | jq -r .chain
 # → "regtest"
 ```
@@ -60,10 +60,10 @@ $HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/regtest \
 Mine ~50 blocks so brk_cli has a non-trivial chain to walk back through:
 
 ```bash
-ADDR=$($HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/regtest \
-       -rpccookiefile=$HOME/.btx/regtest/regtest/.cookie getnewaddress)
-$HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/regtest \
-       -rpccookiefile=$HOME/.btx/regtest/regtest/.cookie generatetoaddress 50 "$ADDR"
+ADDR=$($HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/data/regtest \
+       -rpccookiefile=$HOME/.btx/data/regtest/regtest/.cookie getnewaddress)
+$HOME/.btx/bin/bitcoin-cli -regtest -datadir=$HOME/.btx/data/regtest \
+       -rpccookiefile=$HOME/.btx/data/regtest/regtest/.cookie generatetoaddress 50 "$ADDR"
 sleep 5   # let brk_cli catch up
 ```
 
@@ -94,7 +94,7 @@ Restart bitcoind manually with `-reindex`:
 
 ```bash
 $HOME/.btx/bin/bitcoind -regtest \
-  -datadir=$HOME/.btx/regtest \
+  -datadir=$HOME/.btx/data/regtest \
   -reindex \
   -datacarrier=1 -datacarriersize=240 \
   -fallbackfee=0.0002 -dbcache=300 -server -printtoconsole \
@@ -109,9 +109,9 @@ ensures the v0.2.18 pre-flight wipe doesn't fire and mask the result:
 BRK_BLOCK_MAGIC=fabfb5da \
 $HOME/.btx/bin/brk_cli \
   --brkdir $HOME/.btx/brk-regtest \
-  --blocksdir $HOME/.btx/regtest/regtest/blocks \
+  --blocksdir $HOME/.btx/data/regtest/regtest/blocks \
   --rpcconnect 127.0.0.1 --rpcport 18443 \
-  --rpccookiefile $HOME/.btx/regtest/regtest/.cookie \
+  --rpccookiefile $HOME/.btx/data/regtest/regtest/.cookie \
   --brkport 3140 \
   2>&1 | tee /tmp/btx-walkback-test.log
 ```
