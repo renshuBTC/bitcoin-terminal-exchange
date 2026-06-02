@@ -59,8 +59,39 @@ bash b4_preflight.sh
 
 This runs 8 checks (chain=main, sync state, wallet balance, P2WPKH UTXO available,
 fee market, mempool.space reachable, publisher selftest, stale state files) and
-returns GREEN/YELLOW/RED. Don't proceed past Step 4 unless GREEN. The script
-respects env vars `BTX_BIN`, `BTX_DATADIR`, `BTX_WALLET`, `MAX_OFFER_SATS`.
+returns GREEN/YELLOW/RED. Don't proceed past Step 4 unless GREEN.
+
+**Two supported modes** — pick whichever matches your setup:
+
+**Mode 1 — datadir (the WSL has bitcoind running locally with cookie auth):**
+
+```bash
+export BTX_BIN=$HOME/.btx/bin
+export BTX_DATADIR=$HOME/.bitcoin
+export BTX_WALLET=btx
+bash b4_preflight.sh
+```
+
+**Mode 2 — EXTERNAL_RPC (mainnet bitcoind runs on a different host, e.g. Windows-side
+bitcoin-qt reached from WSL). The preflight uses `-rpcconnect/-rpcuser/-rpcpassword`:**
+
+```bash
+export BTX_BIN=$HOME/.btx/bin
+export BTX_WALLET=RenshuBTC                            # or whatever wallet you funded
+export BTX_RPCCONNECT=172.27.64.1                      # Windows host IP from WSL
+export BTX_RPCPORT=8332
+export BTX_RPCUSER=mybitcoinrpc                        # from your bitcoin.conf
+export BTX_RPCPASSWORD=PickANewStrongPasswordHere      # from your bitcoin.conf
+bash b4_preflight.sh
+```
+
+If you're using Mode 2 you can also do all of Steps 1-5 in one shot via
+`bash b4_execute.sh` (same env vars; auto-picks UTXO, runs maker-sign + dry-run,
+then prints the ready-to-paste broadcast command). The manual steps below still
+work if you'd rather drive each one yourself.
+
+To pre-watch funding before B4: `bash b4_watch_funding.sh <your-funding-addr>` —
+polls mempool.space every 30s and exits when 1 confirmation lands.
 
 ### Step 0b — set the WSL environment
 
