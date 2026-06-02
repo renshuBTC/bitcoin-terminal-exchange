@@ -149,21 +149,29 @@ under "Authorized OAuth Apps" given the `gho_` prefix) or `/settings/tokens`.
 
 **Next step:** browser action, user side.
 
-### O3 — Smoke-test v0.2.19 installer on a clean Windows
+### O3 — Smoke-test v0.2.19 installer on a clean Windows ✓ DONE (2026-06-02)
 
-After B1 produces an NSIS, install on a Windows VM with no prior BTX state, watch the first-launch
-wizard run through, confirm all four daemons come up green. Different from B2 (which assumes the
-installer works and tests the trade loop); this is "does the installer install."
+Ran on Windows 11 Home (the host machine) via the "user uninstalled then reinstalled" route — the
+silent NSIS install completes, registry + bundled binaries are correct, supervisor brings up all four
+daemons, and btxd `/api/health` returns 200 with `bitcoind_height` + `ord_height` within 13 seconds.
+Total 31s from launch to GREEN. See `BTX-O3-smoke-test-2026-06-02.md` for the per-step log + the
+two PowerShell parser fixes shipped alongside.
 
-**Next step:** WSL/PowerShell after B1.
+**Caveat:** this proves silent install on a fully-uninstalled host, not on a from-ISO clean Windows.
+A true clean-VM test would need Windows Pro/Enterprise for Windows Sandbox, or VirtualBox + a
+Windows ISO. Documented in the result doc.
 
-### O4 — Run on signet for at least one week before mainnet
+**Next step:** none. Re-run if the installer SHA changes.
 
-`BTX-seeding-runbook.md` already documents the signet propagation pattern. Continuous signet
-operation surfaces issues that fast regtest doesn't — fee dynamics, real reorgs, ord catchup
-delays, broader Core relay-policy variation across the network.
+### O4 — Run on signet for at least one week before mainnet ✓ IN PROGRESS (since 2026-06-02)
 
-**Next step:** plan a signet soak after B1–B3 pass.
+Soak running since 2026-06-02 ~09:42 UTC. Hourly probe via Windows Scheduled Task
+(`BTX-O4-soak-probe`) captures liveness + heights + memory + error counts of all 4 daemons. The
+task is durable across sleep/reboot/WSL exit. CSV log at `~/.btx/soak.log`. Will complete
+~2026-06-09 (T+7d). See `BTX-O4-signet-soak-2026-06-02.md` for the design + how to read the
+results afterward.
+
+**Next step:** after T+7d, summarize the CSV; mark this section ✓ DONE with the verdict.
 
 ### O5 — Document the PAT rotation discipline
 
