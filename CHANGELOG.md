@@ -5,6 +5,52 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [BTX2 foundation] — 2026-06-02 — cryptographic stack for the next BTX generation
+
+Shipped same day as B4. Three new cryptographic primitives in pure Python, all selftest-GREEN,
+all ported to Rust in `brk-btx` with golden cross-tests:
+
+- **`btx_halfagg.py`** (`1305e02`) — Schnorr signature half-aggregation per
+  `BlockstreamResearch/secp256k1-zkp@8099999`'s `schnorrsig_halfagg` module. Reduces N independent
+  64-byte Schnorr sigs to 32(N+1) bytes — ~50% asymptotic, 45% at N=10. 7-test selftest.
+- **`btx_adaptor.py`** (`85a5d4e`) — Schnorr adaptor signatures per Lloyd Fournier's OTVES
+  construction. 65-byte adaptor pre-signatures that decrypt to normal Schnorr sigs when a secret
+  `t` is revealed. Enables DLC-style conditional orders, cross-chain PTLC building block, order
+  privacy via maker-side encryption. 6-test selftest.
+- **`btx_musig2.py`** (`99e9595`) — BIP327 MuSig2 KeyAgg + trusted-aggregator demo signing. N
+  pubkeys aggregate to one indistinguishable-from-single-signer pubkey. Enables institutional
+  maker pools with custody sharing, key rotation, and zero on-chain footprint change. Full
+  BIP327 interactive 2-round signing protocol is deferred to a vetted library binding (the
+  `pool_sign_demo` here is research-only — see threat model §4.1). 8-test selftest.
+- **`btx_artifact_v2_demo.py`** (`966e978`) — BTX2 envelope prototype integrating all three
+  primitives in three record types (SINGLE_ORDER, BATCH_ANNOUNCE, CONDITIONAL_ORDER). 6-test
+  selftest. Measured byte savings: 22-26% at N=5-50 on batch announces.
+- **`BTX-v2-spec-2026-06-02.md`** (`c200f08`) — formal BTX2 design specification. 12 sections
+  covering envelope format, record types, cryptographic protocols, indexer state machine, BTX1
+  → BTX2 four-phase migration, byte budget, security considerations, reference implementation
+  map. 562 lines.
+- **`BTX-v2-threat-model-2026-06-02.md`** (`2e18ab8`) — formal threat model expansion. 11
+  sections covering 7-actor taxonomy, primitive-by-primitive threats, indexer state-machine
+  threats, network-level threats, implementer checklist, open questions. 416 lines.
+- **Rust ports in brk-btx** (`brk-btx:3969ec0`, `brk-btx:f3642c7`, `brk-btx:cdb6ec2`) — all
+  three primitives ported to Rust against the bitcoin 0.32 / secp256k1 0.29 stack, with
+  Python-generated golden vectors verifying byte-identical results. brk-btx BTX test count:
+  33 → 37 GREEN.
+
+The Python offline suite went 14 → 18 GREEN, with no regression on any pre-existing test.
+
+What's still genuinely deferred:
+
+- **BTX2 mainnet B4-equivalent broadcast.** Requires user-side BTC funding; same operational
+  gate as the original B4.
+- **Production MuSig2 signing via secp256k1-zkp C bindings.** Pure-Rust implementation of
+  BIP327's 2-round signing is unsafe without battle-testing.
+- **Indexer state machine** for the CONDITIONAL_ORDER lifecycle in `brk-btx`. Primitives are
+  in place; scheduler is not.
+
+See `BTX-v2-spec-2026-06-02.md` §10 (reference implementation map) and §11 (open questions)
+for what's next.
+
 ## [B4 SHIPPED] — 2026-06-02 — first mainnet envelope broadcast
 
 Closes the last open BLOCKER from `BTX-mainnet-readiness-2026-05-31.md`. A test-rune order

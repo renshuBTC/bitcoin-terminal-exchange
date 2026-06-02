@@ -7,6 +7,15 @@
 > BTX1 artifact rides in the reveal's witness[1] tapscript under default Bitcoin Core v30 relay
 > policy. See [`BTX-B4-retrospective-2026-06-02.md`](./BTX-B4-retrospective-2026-06-02.md) for the
 > full forensic record.
+>
+> **BTX2 cryptographic foundation shipped same day (2026-06-02).** Three new primitives — Schnorr
+> half-aggregation (`btx_halfagg.py`), Schnorr adaptor signatures (`btx_adaptor.py`), and BIP327
+> MuSig2 KeyAgg (`btx_musig2.py`) — with matching Rust ports in `brk-btx` golden-cross-tested
+> against the Python. Unlocks maker pools, oracle-attested conditional orders, and ~26%-smaller
+> batch announces. See [`BTX-v2-spec-2026-06-02.md`](./BTX-v2-spec-2026-06-02.md) for the formal
+> design and [`BTX-v2-threat-model-2026-06-02.md`](./BTX-v2-threat-model-2026-06-02.md) for the
+> security analysis. Status: foundation ready; production BTX2 deployment is operational work
+> (B4-equivalent mainnet broadcast + indexer state machine), not more design.
 
 A **server-less, on-chain order-book DEX for Bitcoin**. Makers publish `SIGHASH_SINGLE|ANYONECANPAY`
 pre-signed offers as on-chain artifacts; the order book is reconstructed by the node's own indexer
