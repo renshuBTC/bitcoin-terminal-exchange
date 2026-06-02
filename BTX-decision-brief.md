@@ -27,11 +27,13 @@ decision, not to flatter the project.
 ## Three honest paths
 
 **A. Ship BTX as a sovereignty product.** Pursue the narrow "uncensorable order book" niche.
-- Next: public-signet propagation test → then mainnet; pick the carrier (Taproot envelope is the
-  robust one; OP_RETURN now relays by default on Core v30+); decide the real counter-asset (the
-  locked goal is a USD-stablecoin, which reintroduces an issuer/middleman — the one accepted
-  exception). Funding likely = grants (OpenSats/HRF — the censorship angle fits) or being the
-  market-maker yourself.
+- Status: public-signet propagation proven (E2E Prompt 14, 2026-05-28) AND first mainnet broadcast
+  shipped 2026-06-02 (reveal `8acf6c70...` in block 952071, observed by mempool.space +
+  blockstream.info + bitaps.com). The Taproot envelope is the chosen mainnet carrier (OP_RETURN
+  now relays by default on Core v30+ too, but envelope is the cross-policy-safe option).
+- Next: decide the real counter-asset (the locked goal is a USD-stablecoin, which reintroduces an
+  issuer/middleman — the one accepted exception). Funding likely = grants (OpenSats/HRF — the
+  censorship angle fits) or being the market-maker yourself.
 - Honest odds: small addressable audience; competes with free, faster Nostr designs. High effort,
   uncertain payoff. Do this only if maximal sovereignty is the *point* for you, not the money.
 

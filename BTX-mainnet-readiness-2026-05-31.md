@@ -25,27 +25,26 @@ empirically validates mainnet behavior is a mainnet broadcast.
 
 ## 🚫 BLOCKERS to real mainnet use
 
-These are non-negotiable: do not advertise BTX as ready for mainnet value until each is checked.
+These were non-negotiable. As of 2026-06-02 all four (B1–B4) are closed. Sections retained for the
+historical record.
 
-### B1 — v0.2.19 NSIS installer has never been built
+### B1 — v0.2.19 NSIS installer has never been built ✓ DONE (2026-06-01)
 
-The v0.2.19 source landed today, the bundled brk_cli landed today, but `cargo tauri build` was
-never run with the v0.2.19 version + the freshly bundled binary. No installer = no user can install
-v0.2.19 = nothing to validate.
+The v0.2.19 NSIS installer was produced via `cargo tauri build` with the bundled brk_cli (sha
+`d131dc42d21cf240237e1f1db6b8fb33746261dd949478293eee1ab2d7755ce7`) on 2026-06-01. Installer
+artifact lives in `app/src-tauri/target/release/bundle/nsis/`. SHA chain (installed copy ↔ bundle
+resource ↔ repo `app/bin/linux/`) verified matching.
 
-**Next step:** WSL → install Bitcoin Core v30.2 per `CHANGELOG.md`'s v0.2.19 entry → run
-`bash app/scripts/collect_linux_bins.sh` to regenerate `VERSIONS.txt` + `SHA256SUMS` → from
-Windows: `cd app && cargo tauri build` → smoke-test the produced NSIS on a clean Windows VM.
+**Next step:** none. Re-run if the bundled binaries change.
 
-### B2 — v0.2.19 end-to-end loop has never been observed
+### B2 — v0.2.19 end-to-end loop has never been observed ✓ DONE (2026-06-01)
 
-The etch → maker-sign → publish → book → fill → trades loop was last empirically proven on
-**v0.2.5 at block 226** (project memory `project_btx_v025_e2e`). Between v0.2.5 and v0.2.19, 14
-supervisor/indexer/carrier changes layered in. The runbook for re-proving it is written but no one
-has driven it.
+The full etch → maker-sign → publish → book → fill → trades loop was driven end-to-end on the
+v0.2.19 installer on 2026-06-01 (B2.1 through B2.5 sub-steps, see project memory
+`project-btx-b3-closure`). All five sub-steps passed. The runbook `BTX-v0.2.19-e2e-regression-runbook.md`
+is the operational record.
 
-**Next step:** drive `BTX-v0.2.19-e2e-regression-runbook.md` end to end after B1 produces an
-installer. Pass criteria are spelled out in that doc.
+**Next step:** none. Re-drive after any supervisor/indexer/carrier change.
 
 ### B3 — brk_indexer walk-back has never been exercised on a real chain ✓ DONE (2026-06-01)
 
@@ -236,7 +235,9 @@ Items the audit can't close, but a reviewer should be aware of:
 
 ## How to use this doc
 
-Next session opens with a clear question: **which BLOCKER are we knocking down today?** Pick
-one of B1–B4, execute, mark ✓ here, push. The ENGINEERING DEBT and OPERATIONAL READINESS
-sections are for context, not for daily prioritization — they get pulled in as natural
-follow-ups when a blocker drops.
+**Historical note (2026-06-02):** all four BLOCKERS (B1–B4) are closed. The remaining sections
+(ENGINEERING DEBT, OPERATIONAL READINESS, FORWARD-LOOKING) are for context, not for daily
+prioritization — they get pulled in as natural follow-ups when new work is scoped.
+
+Original guidance follows for the historical record: *Next session opens with a clear question:
+which BLOCKER are we knocking down today? Pick one of B1–B4, execute, mark ✓ here, push.*
