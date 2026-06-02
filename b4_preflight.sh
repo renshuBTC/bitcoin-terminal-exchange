@@ -121,6 +121,7 @@ UTXO_JSON=$($BCLI listunspent 1 9999999 2>&1)
 if [ $? -ne 0 ]; then
     fail "listunspent failed"
 else
+    TOTAL_UTXOS=$(echo "$UTXO_JSON" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')
     PICKED=$(echo "$UTXO_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
@@ -142,6 +143,15 @@ print(json.dumps(best) if best else '')
             warn "smallest suitable UTXO is $OAMT BTC ($OAMT_SATS sats) — above the $MAX_OFFER_SATS-sat target. Larger exposure if order somehow gets filled."
         fi
         ok "candidate offer UTXO: $OUTXO = $OAMT BTC ($OAMT_SATS sats)"
+        # B4 needs >=2 UTXOs in practice: maker-sign LOCKS the offer UTXO, then the publisher's
+        # sendtoaddress needs a *different* UTXO to fund the commit. Single-UTXO wallets hit
+        # "Insufficient funds" on the commit broadcast (caught live during 2026-06-02 B4).
+        # If you only have 1 UTXO, either send yourself a small second UTXO first, OR unlock
+        # the offer UTXO before broadcast and accept the "ghost order" trade-off (offer UTXO
+        # consumed by its own commit tx → order announced but immediately invalid).
+        if [ "$TOTAL_UTXOS" = "1" ]; then
+            warn "wallet has only 1 UTXO — maker-sign will lock it as the offer and the publisher's commit funding will fail with 'Insufficient funds'. Options: (a) send a second small UTXO first, or (b) unlock the offer UTXO before broadcast (ghost-order trade-off)."
+        fi
     fi
 fi
 

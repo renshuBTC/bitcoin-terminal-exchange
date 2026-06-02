@@ -62,7 +62,12 @@ EOF
     # Probe BCLI used for our own queries inside this script:
     BCLI_PROBE="$BCLI_BIN_REAL -rpcconnect=$BTX_RPCCONNECT -rpcport=$BTX_RPCPORT -rpcuser=$BTX_RPCUSER -rpcpassword=$BTX_RPCPASSWORD -rpcwallet=$BTX_WALLET"
     MODE="EXTERNAL_RPC ($BTX_RPCCONNECT:$BTX_RPCPORT, wallet=$BTX_WALLET)"
-    PY_CONN_FLAGS="--datadir /tmp/btx-fake-datadir"  # ignored by bitcoin-cli when -rpcconnect is set, but Python passes it
+    # NOTE: bitcoin-cli v30 validates -datadir exists even when -rpcconnect is set
+    # (silently succeeds on v29.1 but fails on v30 with "Specified data directory ... does not exist").
+    # Python publisher unconditionally passes --datadir, so we ensure the dir exists.
+    # Hit live during the 2026-06-02 B4 broadcast — re-introduced after WSL reboot wipes /tmp.
+    mkdir -p /tmp/btx-fake-datadir
+    PY_CONN_FLAGS="--datadir /tmp/btx-fake-datadir"
 else
     BCLI_FOR_PY="$BCLI_BIN_REAL"
     BCLI_PROBE="$BCLI_BIN_REAL -datadir=$BTX_DATADIR -rpcwallet=$BTX_WALLET"
