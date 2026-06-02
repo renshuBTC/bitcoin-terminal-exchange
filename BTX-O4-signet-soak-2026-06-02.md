@@ -50,19 +50,31 @@ restart paths). The probe records what the supervisor actually does over time.
 
 **Cadence**
 
-Hourly via a WSL-side detached `nohup` watcher (pid recorded at
-`/tmp/btx-soak-watcher.pid`). 168 iterations = 7 days.
+Hourly via a Windows Scheduled Task (`BTX-O4-soak-probe`) that invokes a
+small `.cmd` wrapper at `%LOCALAPPDATA%\BTX\run-soak-probe.cmd`. The wrapper
+runs `wsl.exe -e bash -lc "bash <probe-path> >> /tmp/btx-soak.out 2>&1"`.
 
-Output log: `~/.btx/soak.log` (CSV, append-only).
-Stdout: `/tmp/btx-soak.out` (per-probe summary lines).
+Trigger: every 1 hour for 7 days (`-RepetitionDuration 7d`), with
+`-StartWhenAvailable`, `-AllowStartIfOnBatteries`, `-DontStopIfGoingOnBatteries`.
+Survives sleep, reboot, and WSL session exit — Task Scheduler is Windows-level.
+
+Output log: `~/.btx/soak.log` (CSV, append-only — WSL filesystem).
+Stdout: `/tmp/btx-soak.out` (per-probe summary lines — WSL `/tmp`, ephemeral).
 
 **Stopping conditions**
 
-- Natural end at 168 hours.
-- Manual stop via `kill $(cat /tmp/btx-soak-watcher.pid)`.
-- The watcher does not auto-restart if it dies — if `/tmp/btx-soak-watcher.pid`
-  exists but the pid is gone, re-launch with the same command block from
-  `btx_soak_probe.sh`'s header.
+- Natural end at 168 hours (one-week `RepetitionDuration`).
+- Manual stop: `Unregister-ScheduledTask -TaskName 'BTX-O4-soak-probe' -Confirm:$false`
+  via PowerShell on Windows.
+- Pause without unregistering: `Disable-ScheduledTask -TaskName 'BTX-O4-soak-probe'`.
+
+**Why the scheduled task over a nohup loop**
+
+Initially launched as `nohup bash -c '...'` inside WSL. That works while WSL
+has at least one active terminal but dies when WSL shuts down entirely
+(no attached sessions, machine sleep into hibernate, etc.). For a true
+multi-day soak we need Windows-level scheduling. The Scheduled Task wakes
+WSL on demand if it isn't running and runs the probe.
 
 ## What counts as "passing" the soak
 
