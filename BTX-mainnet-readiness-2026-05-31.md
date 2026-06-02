@@ -63,15 +63,25 @@ See `BTX-B3-walkback-exercise-2026-06-01.md` for the full empirical record and c
 **Next step:** none. The walk-back's specific info-log will fire first in the wild during an
 organic dbcache rollback; supervisor v0.2.18 pre-flight is the backstop until then.
 
-### B4 — no mainnet broadcast has ever happened
+### B4 — no mainnet broadcast has ever happened ✓ DONE (2026-06-02)
 
-Every empirical proof to date is on regtest + custom signet + public signet. No BTX-emitted
-transaction has ever entered the real Bitcoin mainnet mempool, let alone a block.
+A test-rune order announce was broadcast via the witness-envelope carrier on mainnet on 2026-06-02
+~04:40 UTC. The reveal (txid `8acf6c70b2c1d75153374ab52f57b6da69ae7606a5931ba295d8cb5dd477f84c`)
+confirmed in block 952071 (block hash `000000000000000000017f61a793597418f69b967626d48b1e3bca3d85c1e29f`)
+at 04:46:32 UTC, alongside its commit tx `199ac25126f363ecb0380a84419ad15399a57bb5ed8d7bd258212cb0a2ed633e`
+— both in the same block, ~6 min broadcast-to-confirmation.
 
-**Next step:** after B1–B3 pass, broadcast an envelope-carrier announce of a test-rune order on
-mainnet at the smallest practical fee. Observe propagation against `mempool.space`. Pull from
-`BTX-seeding-runbook.md` for the propagation observation pattern. Don't ship to users until this
-returns a real txid that a third-party node accepts.
+Propagation was independently observed by three third-party node operators: mempool.space,
+blockstream.info, and bitaps.com. The reveal's witness[1] tapscript contains the BTX1 magic
+(`42545831`) at byte offset 38, with the 207-byte artifact head `425458310201007f969800010001...`
+(BTX1 v2, runestone-flag mode) — confirming the consensus layer accepted the script-path spend
+carrying the BTX artifact under default Bitcoin Core v30 mainnet relay policy.
+
+Total mainnet cost: 568 sats fees (165 commit + 403 reveal) + 5,460 commit dust returned as
+5,057-sat reveal output. **The technical mainnet-readiness case is empirically closed.**
+
+**Next step:** none. Carry the empirical result into any external announcement / decision-brief.
+See `BTX-B4-mainnet-broadcast-runbook.md` "Record of execution" for the full forensic record.
 
 ## ⚠️ ENGINEERING DEBT — works but should fix before scale
 

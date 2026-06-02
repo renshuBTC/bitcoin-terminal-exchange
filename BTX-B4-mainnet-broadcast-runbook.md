@@ -337,11 +337,25 @@ Release it with `$CLI lockunspent true …` as in Step 8.
 
 ## Record of execution
 
-> Fill in after B4 runs:
->
-> - Date: ____________________
-> - Commit txid: ____________________
-> - Reveal txid: ____________________
-> - Block height of reveal: ____________________
-> - mempool.space propagation latency: ____________________
-> - Notes: ____________________
+### B4 SHIPPED — 2026-06-02
+
+- **Date**: 2026-06-02 ~04:40 UTC (broadcast), 04:46:32 UTC (confirmed)
+- **Commit txid**: `199ac25126f363ecb0380a84419ad15399a57bb5ed8d7bd258212cb0a2ed633e`
+- **Reveal txid**: `8acf6c70b2c1d75153374ab52f57b6da69ae7606a5931ba295d8cb5dd477f84c`
+- **Block height (both txs)**: 952071
+- **Block hash**: `000000000000000000017f61a793597418f69b967626d48b1e3bca3d85c1e29f`
+- **mempool.space propagation latency**: <30 seconds from broadcast
+- **blockstream.info propagation latency**: confirmed independently (same block 952071)
+- **bitaps.com**: confirmed independently (same block 952071) — three operators total
+- **BTX1 magic extraction**: PASS at byte offset 38 of reveal's witness[1] tapscript
+- **Artifact head**: `425458310201007f9698000100010000...` (BTX1 v2, runestone-flag)
+- **Witness structure**: 3 items (64B Schnorr sig + 246B tapscript + 33B control block) — clean script-path Taproot spend
+- **Total cost**: 568 sats fees (165 commit + 403 reveal) + 5,460 commit dust returned as 5,057 sat reveal output
+- **Funded with**: 16,063 sats P2WPKH UTXO (`0f963ac4ed4fd376c5fe2ca4065c021da267d7e3c01e36dd5d310acf1e9d458d:1`)
+- **Wallet**: `RenshuBTC` (descriptor wallet, private_keys_enabled, BIP84 wpkh)
+
+**Notes:**
+- The funded wallet had only ONE UTXO; maker-sign locked it as the offer, leaving nothing for commit funding. Unlocked the UTXO before broadcast, accepted the "ghost order" trade-off (offer UTXO spent in same chain as its own announcement → order references a now-spent UTXO). For B4's carrier-propagation goal, this is fine — the absurd-price order is unfillable regardless.
+- Hit a Bitcoin Core v30 schema change live: `getwalletinfo` no longer carries `balance`/`unconfirmed_balance` fields (they moved to `getbalances.mine.trusted/untrusted_pending`). `b4_preflight.sh` was reading the absent field and returned 0, falsely flagging the funded wallet. Fixed in commit `e6e33f0` with pre-v30 fallback.
+- bitcoin-cli v30 validates `--datadir` exists even when `-rpcconnect` is set; the publisher passes a fake datadir for arg compatibility, so `/tmp/btx-fake-datadir` must exist (one-time `mkdir -p`).
+- Both commit and reveal landed in the **same block** (952071) — minimum possible commit-to-reveal latency on mainnet.
