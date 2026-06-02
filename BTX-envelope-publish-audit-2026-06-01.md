@@ -1,9 +1,11 @@
 # BTX `btx_envelope_publish.py` mainnet-safety audit — 2026-06-01
 
-*Adversarial pass before B4 (the first real mainnet broadcast). Previous audits
+*Adversarial pass before B4 (which subsequently shipped on 2026-06-02 — see
+[`BTX-B4-retrospective-2026-06-02.md`](./BTX-B4-retrospective-2026-06-02.md)). Previous audits
 covered btxd.py, brk_indexer, and the artifact format; this module is the
 "actually puts a tx on the network" layer and hasn't been hostilely re-read since
-the proof-of-functionality in `BTX-envelope-publish-runbook.md` (2026-05-24).*
+the proof-of-functionality in `BTX-envelope-publish-runbook.md` (2026-05-24). The F1 fix landed
+here held during the live broadcast — no Ctrl+C-during-broadcast race occurred.*
 
 Methodology: read every function with subprocess / network / file-system side
 effects, every error path, every place where user input flows into an action.

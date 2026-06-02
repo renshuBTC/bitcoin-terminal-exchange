@@ -4,6 +4,12 @@
 (lines cited); each item rated by severity and what specifically goes wrong on mainnet that does **not**
 bite on regtest/signet. Date: 2026-05-27.*
 
+> **STATUS (2026-06-02):** B4 — the first BTX-emitted mainnet broadcast — shipped, with all items
+> below already fixed at the time of broadcast. The reveal (`8acf6c70...`, block 952071) confirmed
+> under default Bitcoin Core v30 relay policy. See
+> [`BTX-B4-retrospective-2026-06-02.md`](./BTX-B4-retrospective-2026-06-02.md) for the empirical
+> record. This audit is retained as the underlying engineering trail.
+
 The good news up front: **no item below is a *protocol* custody/theft hole.** The maker is
 price-protected by its `0x83` signature and taker funds are `SIGHASH_ALL`-protected (see
 `BTX-frontrunning-threat-model.md`), and the audit + adversarial passes closed the real bugs
