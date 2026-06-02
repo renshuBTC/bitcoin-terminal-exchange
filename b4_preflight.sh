@@ -78,12 +78,37 @@ else
 fi
 
 # ---- 3. wallet loaded ----
+# NOTE: Core v30 removed `balance`/`unconfirmed_balance` from getwalletinfo;
+# they now live in getbalances.mine.trusted/untrusted_pending. We try
+# getbalances first and fall back to the old field names for pre-v30 nodes.
 WALLET_JSON=$($BCLI getwalletinfo 2>&1)
 if [ $? -ne 0 ]; then
     fail "wallet '$BTX_WALLET' not loaded ($WALLET_JSON | head -1)"
 else
-    BAL=$(echo "$WALLET_JSON" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("balance",0))')
-    UNCONF=$(echo "$WALLET_JSON" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("unconfirmed_balance",0))')
+    BALANCES_JSON=$($BCLI getbalances 2>&1)
+    BAL=$(echo "$BALANCES_JSON" | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    mine = d.get("mine", {})
+    print(mine.get("trusted", 0))
+except Exception:
+    print(0)
+' 2>&1)
+    UNCONF=$(echo "$BALANCES_JSON" | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    mine = d.get("mine", {})
+    print(mine.get("untrusted_pending", 0))
+except Exception:
+    print(0)
+' 2>&1)
+    # Pre-v30 fallback: if getbalances returned 0 but getwalletinfo has balance, use that
+    if [ "$BAL" = "0" ]; then
+        OLDBAL=$(echo "$WALLET_JSON" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("balance",0))' 2>&1)
+        if [ "$OLDBAL" != "0" ]; then BAL=$OLDBAL; fi
+    fi
     ok "wallet '$BTX_WALLET' loaded; confirmed=$BAL BTC, unconfirmed=$UNCONF BTC"
     BAL_SATS=$(python3 -c "print(int(round($BAL * 100000000)))")
     if [ "$BAL_SATS" -lt 15000 ]; then
