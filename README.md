@@ -1,5 +1,13 @@
 # Bitcoin Terminal Exchange
 
+> **Status: mainnet-proven (2026-06-02).** First BTX envelope-carrier broadcast confirmed on
+> Bitcoin mainnet in block 952071 (reveal txid
+> [`8acf6c70...`](https://mempool.space/tx/8acf6c70b2c1d75153374ab52f57b6da69ae7606a5931ba295d8cb5dd477f84c)),
+> propagation independently observed by mempool.space, blockstream.info, and bitaps.com. The 207-byte
+> BTX1 artifact rides in the reveal's witness[1] tapscript under default Bitcoin Core v30 relay
+> policy. See [`BTX-B4-retrospective-2026-06-02.md`](./BTX-B4-retrospective-2026-06-02.md) for the
+> full forensic record.
+
 A **server-less, on-chain order-book DEX for Bitcoin**. Makers publish `SIGHASH_SINGLE|ANYONECANPAY`
 pre-signed offers as on-chain artifacts; the order book is reconstructed by the node's own indexer
 from chain data — no exchange, no order-relay or gossip network, no server, no escrow (orders still
