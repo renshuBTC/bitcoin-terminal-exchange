@@ -29,6 +29,7 @@ SUITES = [
     ("Schnorr half-aggregation (BTX1 multi-maker artifact compression)", ["btx_halfagg.py"]),
     ("Schnorr adaptor signatures (BTX2 conditional / oracle-attested orders)", ["btx_adaptor.py"]),
     ("BTX2 envelope prototype (batch-announce + conditional records)", ["btx_artifact_v2_demo.py"]),
+    ("BIP327 MuSig2 KeyAgg + trusted-aggregator pool signing", ["btx_musig2.py"]),
 ]
 
 
