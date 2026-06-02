@@ -5,6 +5,29 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [B4 SHIPPED] — 2026-06-02 — first mainnet envelope broadcast
+
+Closes the last open BLOCKER from `BTX-mainnet-readiness-2026-05-31.md`. A test-rune order
+announce was broadcast via the witness-envelope carrier on Bitcoin mainnet on 2026-06-02 ~04:40
+UTC and confirmed in block 952071 at 04:46:32 UTC (~6 minutes broadcast-to-confirmation).
+
+- **Commit txid**: `199ac25126f363ecb0380a84419ad15399a57bb5ed8d7bd258212cb0a2ed633e`
+- **Reveal txid**: `8acf6c70b2c1d75153374ab52f57b6da69ae7606a5931ba295d8cb5dd477f84c`
+- **Block**: 952071 (`000000000000000000017f61a793597418f69b967626d48b1e3bca3d85c1e29f`)
+- **Propagation observed by**: mempool.space, blockstream.info, bitaps.com (three independent
+  third-party node operators, all confirmed same block)
+- **Witness verification**: BTX1 magic `42545831` found at byte offset 38 of the reveal's
+  witness[1] tapscript, with artifact head `425458310201007f969800010001...` (BTX1 v2,
+  runestone-flag). The consensus layer accepted the script-path Taproot spend carrying the
+  207-byte BTX artifact under default Bitcoin Core v30 mainnet relay policy.
+- **Total mainnet cost**: 568 sats fees (165 commit + 403 reveal) + 5,460 commit dust returned
+  as 5,057-sat reveal output. Net spent ≈ 971 sats.
+
+The technical mainnet-readiness case is empirically closed. See `BTX-B4-mainnet-broadcast-runbook.md`
+"Record of execution" for the full forensic record, and `BTX-post-B4-playbook.md` for what comes
+next operationally. Commits `e6e33f0` (v30 `getbalances` preflight fix) and `41cd324` (B4 SHIPPED
+doc updates) ship alongside this milestone.
+
 ## [0.2.19] — 2026-05-31 — bundle bumped to Bitcoin Core v30.2
 
 Bumps the bundled `bitcoind` + `bitcoin-cli` from v29.1.0 to v30.2 (released 2026-01-10), the

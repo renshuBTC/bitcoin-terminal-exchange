@@ -71,6 +71,6 @@ python3 btx_runestone_cenotaph_adversarial.py
 
 For transparency, the limits of these results:
 
-- **Mainnet behavior.** All on-chain runs were regtest + public signet. Bitcoin mainnet policy is not measurably different from signet for these carriers (both inherit Core v29.1 defaults), but no mainnet broadcast happened.
+- **Mainnet behavior.** All on-chain runs in this audit were regtest + public signet. UPDATE 2026-06-02: a smallest-possible mainnet envelope-carrier broadcast (B4) was executed on 2026-06-02 and confirmed in block 952071; the reveal (`8acf6c70b2c1d75153374ab52f57b6da69ae7606a5931ba295d8cb5dd477f84c`) propagated to mempool.space, blockstream.info, and bitaps.com within minutes, and the witness contains the BTX1 magic as designed. See `BTX-B4-mainnet-broadcast-runbook.md` "Record of execution" for the full forensic record. The empirical gap noted above is now closed.
 - **Adversarial network-level behavior.** Mempool-sniping by a competing taker tx with higher fee is a separate threat model, addressed by the opt-in addressed-swap mode (proven live separately in earlier work; see [`BTX-threat-model.md`](./BTX-threat-model.md)). The open SIGHASH_SINGLE|ANYONECANPAY carrier is intentionally fillable by anyone, which is the design goal — sniping immunity is a *user-mode choice* (addressed-only) not a *protocol property*.
 - **Long-running production load.** No mult

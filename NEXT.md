@@ -1,39 +1,24 @@
 # What's next — pick one when you're back
 
-*Status snapshot as of 2026-06-01 evening. Generated after the autonomous
-de-risk run. Five commits shipped today; everything except B4 itself is
-either done or ready for you to execute.*
+*Status snapshot as of 2026-06-02 morning. B4 SHIPPED. The last BLOCKER from
+`BTX-mainnet-readiness-2026-05-31.md` is closed. What follows are operational
+items, not gates.*
 
-## B4 is the only remaining BLOCKER, and it's primed
+## B4 — DONE ✓ (2026-06-02)
 
-Run these two commands when you're ready:
+The smallest possible mainnet envelope broadcast happened on 2026-06-02 ~04:40
+UTC and confirmed in block 952071 at 04:46:32 UTC.
 
-```bash
-# 1. Pre-flight (8 checks; should return GREEN)
-cd /mnt/c/Users/Ren\ Shu/Documents/Claude/Projects/bitcoin-terminal-exchange
-bash b4_preflight.sh
+- **Reveal txid**: `8acf6c70b2c1d75153374ab52f57b6da69ae7606a5931ba295d8cb5dd477f84c`
+- **Commit txid**: `199ac25126f363ecb0380a84419ad15399a57bb5ed8d7bd258212cb0a2ed633e`
+- **Propagation**: confirmed by mempool.space + blockstream.info + bitaps.com (three
+  independent third-party operators, all same block)
+- **Witness verification**: BTX1 magic `42545831` at byte offset 38 of reveal's witness[1]
+  tapscript, artifact head `425458310201007f969800010001...` (BTX1 v2, runestone-flag)
+- **Total cost**: 568 sats fees + 5,460 commit dust returned as 5,057-sat reveal output
 
-# 2. If GREEN, walk through BTX-B4-mainnet-broadcast-runbook.md
-#    The only step I can't do for you is Step 5 (the actual broadcast).
-```
-
-Total exposure ≤ $3.50. The runbook + the publisher's F1 fix mean the only
-way to lose money is a script-verify rejection (extremely unlikely given the
-2026-05-24 signet result + 14/14 offline tests + 32/32 Rust tests all green).
-
-After broadcast: follow `BTX-post-B4-playbook.md` to verify, record txids,
-and update the readiness doc.
-
-## Mainnet fee market (snapshot taken 2026-06-01)
-
-- minimumFee / economyFee / hourFee: **1 sat/vB**
-- fastestFee (next block): **3 sat/vB**
-- mempool depth: ~120k txs (calm)
-
-The runbook's `--fee-sats 200` = 1 sat/vB which is at the floor. If you check
-the fee market again before broadcasting and it's higher than 1 sat/vB, use
-`--fee-sats <new_floor_in_sats_per_vB * 200>` for headroom. The pre-flight
-script does this check too.
+The technical mainnet-readiness case is empirically closed. See `BTX-B4-mainnet-broadcast-runbook.md`
+"Record of execution" and `BTX-mainnet-readiness-2026-05-31.md` B4 section for the full record.
 
 ## Other open items (none B4-blocking)
 
