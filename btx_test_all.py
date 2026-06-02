@@ -27,6 +27,7 @@ SUITES = [
     ("light-client follower (independent fold + checkpoint guard)", ["btx_light_client.py", "--selftest"]),
     ("cross-impl extraction corpus (Python side vs Rust golden)", ["btx_xcheck.py"]),
     ("Schnorr half-aggregation (BTX1 multi-maker artifact compression)", ["btx_halfagg.py"]),
+    ("Schnorr adaptor signatures (BTX2 conditional / oracle-attested orders)", ["btx_adaptor.py"]),
 ]
 
 
