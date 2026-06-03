@@ -99,7 +99,7 @@ SUB_TESTS = [
         "Bitcoin CoreX/python-bip380-reference/bip380/descriptors/checksum.py",
     ),
     (
-        "BIP-322 generic signed message (hash + to_spend + to_sign)",
+        "BIP-322 generic signed message (hash + tx + P2TR sign/verify)",
         "btx_bip322.py",
         "Bitcoin CoreX/bitcoin-bips-reference/bip-0322/basic-test-vectors.json",
     ),

@@ -63,13 +63,18 @@ Tested against bitcoin/bips bip-0322/basic-test-vectors.json — 3 vectors.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import struct
-from typing import List
+from typing import List, Optional
 
 
 # BIP-322 tag for message hashing
 _BIP322_TAG = "BIP0322-signed-message"
+
+
+# secp256k1 constants (mirror of btx_taproot)
+_SECP_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 
 # ---------------------------------------------------------------- helpers
@@ -242,6 +247,319 @@ def build_to_sign_tx_signed(
     return body
 
 
+# =====================================================================
+#  BIP-322 simple P2TR signing/verification
+# =====================================================================
+#
+# The "simple" format consists of the to_sign witness stack, consensus-
+# encoded (compact_size(N) || ser_string(item) for each item), and
+# base64-encoded with the literal ASCII prefix "smp".
+#
+# For a P2TR key-path spend the witness is just [sig] where sig is a
+# BIP-340 Schnorr signature over the BIP-341 key-path sighash of to_sign.
+# When the resulting sig is 64 bytes (SIGHASH_DEFAULT), the implicit
+# hash_type is 0x00; a 65-byte sig would carry an explicit hash_type
+# byte but BTX always emits SIGHASH_DEFAULT here.
+
+
+# -------------------------- bech32m decode (BIP-350) ----------------------
+
+# (Keep this self-contained so btx_bip322 has no extra dependency on
+#  btx_taproot's bech32m implementation. The polymod logic is identical;
+#  the only difference between bech32 and bech32m is the constant.)
+_BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_BECH32M_CONST = 0x2BC830A3
+
+
+def _bech32_polymod(values):
+    gen = [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]
+    chk = 1
+    for v in values:
+        b = chk >> 25
+        chk = ((chk & 0x1FFFFFF) << 5) ^ v
+        for i in range(5):
+            chk ^= gen[i] if ((b >> i) & 1) else 0
+    return chk
+
+
+def _hrp_expand(hrp):
+    return [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
+
+
+def _convertbits(data, frm, to, pad=True):
+    acc = 0
+    bits = 0
+    ret = []
+    maxv = (1 << to) - 1
+    for b in data:
+        acc = (acc << frm) | b
+        bits += frm
+        while bits >= to:
+            bits -= to
+            ret.append((acc >> bits) & maxv)
+    if pad and bits:
+        ret.append((acc << (to - bits)) & maxv)
+    elif not pad and (bits >= frm or ((acc << (to - bits)) & maxv)):
+        return None
+    return ret
+
+
+def decode_segwit_address(addr: str, expected_hrp: str = "bc"):
+    """Return (witver, witprog_bytes) for a bc1q/bc1p address, or raise."""
+    addr = addr.lower()
+    if not addr.startswith(expected_hrp + "1"):
+        raise ValueError(f"bad hrp prefix on {addr!r}")
+    enc = addr[len(expected_hrp) + 1:]
+    if any(c not in _BECH32_CHARSET for c in enc):
+        raise ValueError("address contains non-bech32 chars")
+    data = [_BECH32_CHARSET.find(c) for c in enc]
+    if len(data) < 6:
+        raise ValueError("address too short")
+    values = _hrp_expand(expected_hrp) + data
+    poly = _bech32_polymod(values)
+    witver = data[0]
+    expected_const = 1 if witver == 0 else _BECH32M_CONST
+    if poly != expected_const:
+        raise ValueError(
+            f"bad checksum (got polymod={poly:#x}, "
+            f"want={expected_const:#x} for witver={witver})"
+        )
+    bits = _convertbits(data[1:-6], 5, 8, False)
+    if bits is None:
+        raise ValueError("bad witness program 5->8 bit convert")
+    witprog = bytes(bits)
+    if not (2 <= len(witprog) <= 40):
+        raise ValueError(f"witness program length {len(witprog)} out of range")
+    if witver == 0 and len(witprog) not in (20, 32):
+        raise ValueError("v0 witness program must be 20 or 32 bytes")
+    return witver, witprog
+
+
+# -------------------------- WIF (base58check) decode ----------------------
+
+_B58_CHARSET = (
+    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+)
+
+
+def _b58_decode(s: str) -> bytes:
+    num = 0
+    for c in s:
+        idx = _B58_CHARSET.find(c)
+        if idx < 0:
+            raise ValueError(f"non-base58 char {c!r}")
+        num = num * 58 + idx
+    # Encode as bytes (big-endian) preserving leading "1"s as zero bytes.
+    n_bytes = max(1, (num.bit_length() + 7) // 8)
+    out = num.to_bytes(n_bytes, "big")
+    pad = 0
+    for c in s:
+        if c == "1":
+            pad += 1
+        else:
+            break
+    return b"\x00" * pad + out
+
+
+def decode_wif(wif: str) -> tuple[bytes, bool]:
+    """Decode a WIF private key. Returns (32-byte privkey, compressed_flag).
+
+    Mainnet WIF format:
+        [0x80] || [32-byte privkey] || [optional 0x01 = compressed] || [4-byte checksum]
+    """
+    raw = _b58_decode(wif)
+    if len(raw) < 4:
+        raise ValueError("WIF too short")
+    payload, checksum = raw[:-4], raw[-4:]
+    if hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4] != checksum:
+        raise ValueError("WIF checksum mismatch")
+    if payload[0] != 0x80:
+        raise ValueError(f"unexpected WIF version byte {payload[0]:#x}")
+    if len(payload) == 33:
+        return payload[1:], False           # uncompressed
+    if len(payload) == 34 and payload[33] == 0x01:
+        return payload[1:33], True          # compressed
+    raise ValueError(f"unexpected WIF payload length {len(payload)}")
+
+
+# -------------------------- Taproot tweak helper --------------------------
+
+
+def _taproot_tweak_seckey(seckey: bytes, merkle_root: bytes = b"") -> bytes:
+    """BIP-341 key-spend secret-key tweak. Returns the 32-byte tweaked
+    secret key d_q such that schnorr_sign with d_q produces a valid
+    key-path signature under the output key Q = P + t·G where
+    t = H_TapTweak(P || merkle_root).
+    """
+    # Import lazily to avoid circular import surprises in some build
+    # configurations.
+    from btx_taproot import (
+        xonly_pubkey,
+        taproot_tweak_pubkey,
+        tagged_hash as _ttag,
+        _has_even_y,
+    )
+
+    assert len(seckey) == 32
+    d0 = int.from_bytes(seckey, "big")
+    if not (1 <= d0 < _SECP_N):
+        raise ValueError("secret key out of range")
+    p_xonly, point = xonly_pubkey(seckey)
+    d_internal = d0 if _has_even_y(point) else (_SECP_N - d0)
+    t_bytes = _ttag("TapTweak", p_xonly + bytes(merkle_root))
+    t = int.from_bytes(t_bytes, "big") % _SECP_N
+    d_tweaked = (d_internal + t) % _SECP_N
+    # Now check parity of the output key Q. If Q has odd y, negate.
+    parity, q_xonly = taproot_tweak_pubkey(p_xonly, bytes(merkle_root))
+    if parity == 1:                              # output key has odd y
+        d_tweaked = (_SECP_N - d_tweaked) % _SECP_N
+    if d_tweaked == 0:
+        raise ValueError("tweaked secret key is 0 (vanishingly unlikely)")
+    return d_tweaked.to_bytes(32, "big")
+
+
+# -------------------------- simple BIP-322 P2TR sign/verify ---------------
+
+
+def _p2tr_spk_from_xonly(output_xonly: bytes) -> bytes:
+    """Build the OP_1 PUSH32 [Q] scriptPubKey for a Taproot output."""
+    assert len(output_xonly) == 32
+    return b"\x51" + b"\x20" + output_xonly
+
+
+def _bip322_p2tr_sighash(
+    msg_hash: bytes, output_xonly: bytes
+) -> bytes:
+    """Compute the BIP-341 key-path sighash that a BIP-322 simple P2TR
+    signature must commit to. The to_spend output amount is 0 and the
+    spent scriptPubKey is the address's spk.
+    """
+    from btx_taproot import tap_sighash, SIGHASH_DEFAULT
+
+    spk = _p2tr_spk_from_xonly(output_xonly)
+    spend_txid_le = to_spend_txid(msg_hash, spk)
+    # to_sign tx: spends to_spend:0, outputs (0, OP_RETURN), no witness yet
+    vin = [(bytes(spend_txid_le), 0, 0)]
+    spent_amounts = [0]
+    spent_spks = [spk]
+    vout = [(0, b"\x6a")]                # value=0, scriptPubKey=OP_RETURN
+    return tap_sighash(
+        version=0,
+        locktime=0,
+        vin=vin,
+        spent_amounts=spent_amounts,
+        spent_spks=spent_spks,
+        vout=vout,
+        input_index=0,
+        hash_type=SIGHASH_DEFAULT,
+        ext_flag=0,
+    )
+
+
+def sign_simple_p2tr(
+    message: bytes | str,
+    seckey: bytes,
+    aux_rand: Optional[bytes] = None,
+) -> str:
+    """Produce a BIP-322 'simple' signature for a P2TR (key-path) address.
+
+    The returned string is the "smp" + base64(<witness stack>) form
+    suitable for direct comparison or transmission.
+
+    The signing key is the *internal* private key; the BIP-341 key-path
+    tweak (with empty merkle root) is applied internally so the resulting
+    signature verifies under the output key Q.
+    """
+    from btx_taproot import schnorr_sign
+
+    if aux_rand is None:
+        aux_rand = b"\x00" * 32
+    mh = message_hash(message)
+    # Derive output x-only from the internal seckey
+    from btx_taproot import xonly_pubkey, taproot_tweak_pubkey
+
+    p_xonly, _ = xonly_pubkey(seckey)
+    _parity, q_xonly = taproot_tweak_pubkey(p_xonly, b"")
+    sighash = _bip322_p2tr_sighash(mh, q_xonly)
+    d_q = _taproot_tweak_seckey(seckey, b"")
+    sig = schnorr_sign(sighash, d_q, aux_rand)
+    return _encode_simple_signature([sig])
+
+
+def verify_simple_p2tr(message: bytes | str, address: str, signature_str: str) -> bool:
+    """Verify a BIP-322 'simple' P2TR signature against a bc1p address."""
+    from btx_taproot import schnorr_verify
+
+    try:
+        witver, witprog = decode_segwit_address(address, "bc")
+    except ValueError:
+        return False
+    if witver != 1 or len(witprog) != 32:
+        return False                              # not a v1 (Taproot) address
+    output_xonly = bytes(witprog)
+    try:
+        stack = _decode_simple_signature(signature_str)
+    except ValueError:
+        return False
+    if len(stack) != 1 or len(stack[0]) not in (64, 65):
+        return False
+    sig = stack[0]
+    if len(sig) == 65 and sig[64] != 0x00:
+        # explicit hash_type byte must be 0x00 (SIGHASH_DEFAULT) for the
+        # simple sighash we compute; non-default isn't covered here.
+        return False
+    sig64 = sig[:64]
+    mh = message_hash(message)
+    sighash = _bip322_p2tr_sighash(mh, output_xonly)
+    return schnorr_verify(sighash, output_xonly, sig64)
+
+
+def _encode_simple_signature(stack: List[bytes]) -> str:
+    """smp + base64( compact_size(N) || (ser_string(item) for item in stack) )"""
+    body = compact_size(len(stack))
+    for item in stack:
+        body += ser_string(item)
+    return "smp" + base64.b64encode(body).decode("ascii")
+
+
+def _decode_simple_signature(s: str) -> List[bytes]:
+    """Inverse of _encode_simple_signature. Returns the witness stack."""
+    if not s.startswith("smp"):
+        raise ValueError("missing 'smp' variant prefix")
+    raw = base64.b64decode(s[3:])
+    pos = 0
+
+    def _read_compact_size() -> int:
+        nonlocal pos
+        first = raw[pos]
+        pos += 1
+        if first < 0xFD:
+            return first
+        if first == 0xFD:
+            v = int.from_bytes(raw[pos:pos + 2], "little")
+            pos += 2
+            return v
+        if first == 0xFE:
+            v = int.from_bytes(raw[pos:pos + 4], "little")
+            pos += 4
+            return v
+        v = int.from_bytes(raw[pos:pos + 8], "little")
+        pos += 8
+        return v
+
+    n = _read_compact_size()
+    stack: List[bytes] = []
+    for _ in range(n):
+        length = _read_compact_size()
+        if pos + length > len(raw):
+            raise ValueError("truncated stack item")
+        stack.append(raw[pos:pos + length])
+        pos += length
+    if pos != len(raw):
+        raise ValueError(f"trailing bytes after stack ({len(raw) - pos} leftover)")
+    return stack
+
+
 # ---------------------------------------------------------------- cross-test
 
 
@@ -349,15 +667,121 @@ def main() -> int:
                     f"inline={inline_mh} json={entry['message_hash']}"
                 )
 
+    # ------------------------------------------------------------------
+    #   Phase 2 — P2TR sign + verify against the official generated
+    #   test vectors.
+    # ------------------------------------------------------------------
+    p2tr_ok = 0
+    p2tr_total = 0
+    GENERATED_CANDIDATES = [
+        os.path.join(
+            os.path.dirname(HERE),
+            "Bitcoin CoreX",
+            "bitcoin-bips-reference",
+            "bip-0322",
+            "generated-test-vectors.json",
+        ),
+        "/mnt/c/Users/Ren Shu/Documents/Claude/Projects/Bitcoin CoreX/bitcoin-bips-reference/bip-0322/generated-test-vectors.json",
+    ]
+    gen_src = None
+    for p in GENERATED_CANDIDATES:
+        if os.path.isfile(p):
+            gen_src = p
+            break
+
+    if gen_src is not None:
+        with open(gen_src) as f:
+            gen = json.load(f)
+        p2tr_entries = [e for e in gen.get("simple", []) if e.get("type") == "p2tr"]
+        for entry in p2tr_entries:
+            p2tr_total += 1
+            wif = entry["private_keys"][0]
+            msg = entry["message"]
+            addr = entry["address"]
+            canonical_sig = entry["bip322_signatures"][0]
+            try:
+                seckey, _compressed = decode_wif(wif)
+            except Exception as e:
+                failures.append(f"p2tr: WIF decode failed: {e}")
+                continue
+
+            # Independent sanity: the address bech32m-decodes to
+            # the tweaked output key derived from the private key.
+            try:
+                witver, witprog = decode_segwit_address(addr, "bc")
+            except ValueError as e:
+                failures.append(f"p2tr: addr decode failed: {e}")
+                continue
+            if witver != 1 or len(witprog) != 32:
+                failures.append(f"p2tr: addr is not v1/32B for {addr}")
+                continue
+
+            from btx_taproot import xonly_pubkey, taproot_tweak_pubkey
+            p_xonly, _ = xonly_pubkey(seckey)
+            _parity, q_xonly = taproot_tweak_pubkey(p_xonly, b"")
+            if q_xonly != bytes(witprog):
+                failures.append(
+                    f"p2tr: address Q={witprog.hex()} doesn't match "
+                    f"derived Q={q_xonly.hex()} from WIF"
+                )
+                continue
+
+            # 1. The canonical signature must verify against our verifier.
+            if not verify_simple_p2tr(msg, addr, canonical_sig):
+                failures.append(
+                    f"p2tr: canonical sig from generated-test-vectors did NOT verify "
+                    f"for addr {addr}"
+                )
+                continue
+
+            # 2. Round-trip: sign with aux_rand=0; verify must pass.
+            our_sig = sign_simple_p2tr(msg, seckey, aux_rand=b"\x00" * 32)
+            if not verify_simple_p2tr(msg, addr, our_sig):
+                failures.append("p2tr: own sign->verify round-trip failed")
+                continue
+
+            # 3. Tamper test — wrong message must fail.
+            if verify_simple_p2tr(msg + "x", addr, our_sig):
+                failures.append("p2tr: verify accepted tampered message (BAD)")
+                continue
+
+            # 4. Tamper test — wrong address must fail.
+            wrong_q = (int.from_bytes(q_xonly, "big") ^ 1).to_bytes(32, "big")
+            try:
+                # rebuild a bech32m address from the flipped key; if it
+                # doesn't pass the curve check we just skip this sub-step
+                from btx_taproot import segwit_address as _sa, lift_x
+                lift_x(int.from_bytes(wrong_q, "big"))   # ensures it's on-curve
+                wrong_addr = _sa(1, wrong_q, "bc")
+                if verify_simple_p2tr(msg, wrong_addr, our_sig):
+                    failures.append("p2tr: verify accepted tampered address (BAD)")
+                    continue
+            except Exception:
+                pass
+
+            p2tr_ok += 1
+
     if failures:
         print(f"FAIL: {len(failures)} divergence(s):")
         for f in failures:
             print(f"  - {f}")
-        print(f"✗ btx_bip322: {ok}/{total} PASS, {len(failures)} fail")
+        print(
+            f"✗ btx_bip322: hash {ok}/{total}, p2tr {p2tr_ok}/{p2tr_total}, "
+            f"{len(failures)} fail"
+        )
         return 1
 
     print(f"  message_hash + to_spend + to_sign:  {ok}/{total} PASS")
-    print(f"✓ btx_bip322: all {total} basic-test-vector hash chains agree with canonical")
+    if p2tr_total:
+        print(
+            f"  P2TR sign+verify (canonical+round-trip+tamper): {p2tr_ok}/{p2tr_total} PASS"
+        )
+    else:
+        print("  P2TR sign+verify: SKIPPED (generated-test-vectors.json not found)")
+    print(
+        f"✓ btx_bip322: all {total} hash chains + {p2tr_ok} P2TR "
+        f"sign/verify rounds agree with canonical"
+    )
     return 0
 
 
