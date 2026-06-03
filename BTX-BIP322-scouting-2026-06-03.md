@@ -136,16 +136,93 @@ Full BIP-322 signing/verification additionally needs:
 - **P2WPKH path**: ECDSA sig over BIP-143 sighash. BTX doesn't have
   ECDSA primitives (it's BIP-340-Schnorr-only). Skipping — not BTX
   scope.
-- **P2TR path**: BIP-340 Schnorr sig over BIP-341 key-path sighash of
+- ~~**P2TR path**: BIP-340 Schnorr sig over BIP-341 key-path sighash of
   the to_sign tx. BTX has all primitives via `btx_taproot.py`. This
   is the natural next step, ~50 LOC + 1 cross-test sub-test against
-  the P2TR entries in `generated-test-vectors.json`.
+  the P2TR entries in `generated-test-vectors.json`.~~ **SHIPPED, see
+  Post-amendment below.**
 - **P2WSH-multisig path**: aggregate witness construction. Out of
   scope for current BTX (key-path only).
 
 These would each be additional sub-tests in future cycles. The
 foundation in this session is the BIP-322 hash + tx construction —
 the part every implementation gets wrong first.
+
+---
+
+## Post-amendment — P2TR simple + full sign/verify shipped
+
+After the initial hash-chain ship at commit `7a45b7a`, the user
+prompted "ship BIP-322 P2TR signing" (the recommended next direction).
+Two commits closed the P2TR scope:
+
+| Commit | Adds |
+|--------|------|
+| `881b433` | **Simple format**: `sign_simple_p2tr` / `verify_simple_p2tr`, the `smp`-prefixed base64 witness-stack encoding, WIF decode, bech32m decode, BIP-341 key-spend tweak helper. |
+| `5433ccb` | **Full format**: `sign_full_p2tr` / `verify_full_p2tr` parameterised by `nVersion` / `nLockTime` / `nSequence`. Lets the signer issue time-locked attestations as `ful`-prefixed base64 of the full to_sign tx. |
+
+### Cross-test result
+
+Both formats verified against the canonical vectors in
+`bip-0322/generated-test-vectors.json`:
+
+```
+  message_hash + to_spend + to_sign:  3/3 PASS
+  P2TR simple sign+verify (canonical+round-trip+tamper):       1/1 PASS
+  P2TR full sign+verify with time-locks (canonical+round-trip+tamper): 1/1 PASS
+✓ btx_bip322: 3 hash chains + 1 simple + 1 full P2TR rounds agree with canonical
+```
+
+The tamper coverage in each P2TR sub-test:
+
+- **Simple**: canonical signature verifies, own sign→verify
+  round-trips, tampered message rejected, tampered address
+  rejected (on the cases where the bit-flip lands on the curve).
+- **Full**: canonical signature verifies, own sign→verify
+  round-trips with `version=2 locktime=2016 sequence=2016`,
+  tampered message rejected, tampered lockTime rejected (bit-flipped
+  last 4 bytes of the encoded tx).
+
+### Suite state
+
+`btx_xtest_suite.py` 9/9 PASS in ~11s. The BIP-322 sub-test now
+reads "BIP-322 generic signed message (hash + tx + P2TR
+sign/verify)" and covers all three sub-suites under one runner.
+
+### BTX product implications
+
+The two intended use cases for BTX makers are now both expressible
+with the shipped primitives:
+
+1. **Plain maker attestation** (simple format): a desk proves
+   control of a `bc1p` maker address by signing a BTX-issued
+   challenge nonce. No custodial registry required.
+2. **Time-bounded liquidity attestation** (full format): a desk
+   signs an attestation valid only until block `N` (set via
+   `locktime`). Useful for liquidity commitments that should expire
+   if not consumed.
+
+Both paths use only BIP-340 Schnorr + BIP-341 key-path under the
+hood — already audited in `BTX-bip340-bip341-foundation-2026-06-03.md`.
+
+### Still out of scope (unchanged)
+
+- P2WPKH (ECDSA) — out of BTX scope by design.
+- P2WSH multisig — out of BTX scope; BTX2 uses MuSig2 aggregation
+  instead.
+- Full proof-of-funds — additional UTXO references, requires a
+  blockchain-aware verifier; bookmark for if BTX ever exposes a
+  maker-credentials endpoint that needs to check on-chain balances.
+
+### Triggers for revisiting
+
+The remaining BIP-322 ground is small and bounded:
+
+| Trigger | Add |
+|---------|-----|
+| BTX product adds a maker-credentials endpoint that needs proof-of-funds | The PoF variant (`pof` prefix) |
+| BTX maker desk wants explicit `SIGHASH_ALL/SINGLE/NONE` attestations | 65-byte sig path with explicit hash_type byte |
+| BTX integrates with a non-Taproot hardware wallet for attestation | P2WPKH ECDSA path |
 
 ## Updated 13-scout pattern
 
