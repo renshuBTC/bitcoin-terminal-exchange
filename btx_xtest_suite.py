@@ -84,6 +84,11 @@ SUB_TESTS = [
         "Bitcoin CoreX/bitcoin-bips-reference/bip-0327/vectors/key_agg_vectors.json",
     ),
     (
+        "BIP-374 DLEQ (single-curve discrete log equality)",
+        "btx_bip374_xtest.py",
+        "Bitcoin CoreX/bitcoin-bips-reference/bip-0374/test_vectors_generate_proof.csv",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
