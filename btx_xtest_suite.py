@@ -104,6 +104,11 @@ SUB_TESTS = [
         "Bitcoin CoreX/bitcoin-bips-reference/bip-0322/basic-test-vectors.json",
     ),
     (
+        "BIP-322 adversarial (negative cases must reject without crashing)",
+        "btx_bip322_adversarial.py",
+        None,
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
