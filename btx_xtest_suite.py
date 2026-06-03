@@ -154,6 +154,11 @@ SUB_TESTS = [
         None,  # graceful SKIP if Node + bip322-js not installed
     ),
     (
+        "BIP-340 vs secp256k1lab (Jonas Nick's authoritative reference)",
+        "btx_xtest_vs_secp256k1lab.py",
+        None,  # graceful SKIP if secp256k1lab not present
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
