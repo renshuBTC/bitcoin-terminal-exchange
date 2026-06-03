@@ -297,13 +297,18 @@ added:
 | 12 | `romanz/electrs` | spec only | **architectural-protocol** (NEW: different stack for similar role) |
 | 13 | `bitcoin/bips` (BIP-322) | **shipped code** (9th xtest sub-test) | — |
 | 14 | `bitcoin/bips` (BIP-388) | spec only | **scope-mismatch** (NEW: BTX descriptors simpler than minimum tier) |
+| 15 | `bitcoin/bips` (BIP-431 TRUC) | spec only | **threat-model-mismatch** (NEW: BTX2 reveals aren't pin-able by adversaries) |
 
-Updated totals after 14 scouts:
+Updated totals after 15 scouts:
 
-- **6 ship / 8 spec** (extraction rate 6/14 ≈ 43%)
-- **8 distinct defer-reason categories**: operational,
+- **6 ship / 9 spec** (extraction rate 6/15 ≈ 40%)
+- **9 distinct defer-reason categories**: operational,
   architectural-no-use, consensus, product, era, product-timing,
-  architectural-protocol, scope-mismatch
+  architectural-protocol, scope-mismatch, threat-model-mismatch
+
+The taxonomy continues to sharpen with each scout. Defer-with-reason
+remains a first-class outcome — categorising *why* a tool doesn't
+fit BTX today is the durable artifact.
 - **`btx_xtest_suite`**: 9/9 PASS in ~10s (was 8/8 at 11-scout mark)
 - **New code shipped post-11**: `btx_bip322.py` (244 LOC) — BIP-322
   generic signed message foundation, 3/3 PASS on canonical vectors
@@ -313,14 +318,20 @@ Updated totals after 14 scouts:
 
 ### Defer-category refinement
 
-The "product-timing" category (ChillDKG: BTX wants this in v1.0) and
-the new "scope-mismatch" category (BIP-388: BTX descriptors are too
-simple to benefit) were initially conflated. The distinction:
+Three "right tool, wrong something" categories distinguish on
+**why** the tool doesn't fit:
 
-- **product-timing**: feature *will* matter when BTX has more users.
-  Implementation is sized, scheduled, and triggered.
-- **scope-mismatch**: feature addresses a complexity tier BTX may
-  never enter. Bookmarked only as "if BTX's scope changes."
+- **product-timing** (ChillDKG): right tool, BTX wants it later when
+  product has more users. Implementation is sized, scheduled, and
+  triggered.
+- **scope-mismatch** (BIP-388): right tool, BTX may never enter the
+  complexity tier where the tool helps. Bookmarked only as "if BTX's
+  scope changes."
+- **threat-model-mismatch** (BIP-431 TRUC): right tool, but BTX's
+  protocol-level design already neutralises the threat the tool
+  defends against. BIP-431 protects against pinning of presigned
+  txs; BTX2 reveals are encumbered and not spendable by adversaries
+  pre-fill, so there's no pinning surface to defend.
 
 ### Final commits (chronological)
 
