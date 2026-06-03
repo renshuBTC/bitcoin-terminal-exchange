@@ -99,6 +99,11 @@ SUB_TESTS = [
         "Bitcoin CoreX/python-bip380-reference/bip380/descriptors/checksum.py",
     ),
     (
+        "BIP-322 generic signed message (hash + to_spend + to_sign)",
+        "btx_bip322.py",
+        "Bitcoin CoreX/bitcoin-bips-reference/bip-0322/basic-test-vectors.json",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
