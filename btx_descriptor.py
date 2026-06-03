@@ -201,31 +201,41 @@ def tr_key_only_address(maker_xonly: bytes, hrp: str = "bc") -> str:
 # re-runnable canonical cross-test that mirrors the BIP-340/341 ones.
 _GOLDEN_TR_KEY = [
     # (32-byte x-only pubkey hex, network hrp, expected address)
-    # Vector 0: BIP-341 wallet-test-vectors.json scriptPubKey case 0
-    # (already validated 7/7 in btx_bip341_xtest.py — this is canonical
-    # by transitivity).
-    (
-        "d6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d",
-        "bc",
-        "bc1p2wsldez5mud2yam29q22wgfh9439spgduvct83k3pm50fcxa5dps59h4z5",
-    ),
-    # Vector 1: a NUMS-style "unspendable" x-only used as internal key.
-    # Address derived by BTX (which is canonical BIP-341 per the
-    # foundation cross-test); equivalent to what rust-miniscript's
-    # `Descriptor::from_str("tr(...)").address(Bitcoin)` would produce.
-    (
-        "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0",
-        "bc",
-        "bc1prykz5vxt6lgr2tu56np35slhvlc77s7hlajr3qucsrkqwhvp48mq5grvgr",
-    ),
-    # Vector 2: secp256k1 G x-coord (the standard generator). Useful as
-    # a sanity probe; the resulting address is whatever BIP-341 + BTX
-    # produces for that input.
-    (
-        "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-        "bc",
-        "bc1pgxxyvcmdncdxs06cudd5yvmwwahaesaj6n3eu7st7x4sw9hrchaqjy33gs",
-    ),
+    # All addresses produced by rust-miniscript v12.3.7 via
+    # `Descriptor::<XOnlyPublicKey>::from_str("tr(...)").address(Bitcoin)`
+    # and confirmed byte-equal with BTX. See
+    # BTX-rust-miniscript-scouting-2026-06-03.md for the probe.
+
+    # BIP-341 wallet-test-vectors.json scriptPubKey case 0
+    ("d6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d",
+     "bc", "bc1p2wsldez5mud2yam29q22wgfh9439spgduvct83k3pm50fcxa5dps59h4z5"),
+    # NUMS-style "unspendable" x-only
+    ("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0",
+     "bc", "bc1prykz5vxt6lgr2tu56np35slhvlc77s7hlajr3qucsrkqwhvp48mq5grvgr"),
+    # secp256k1 G x-coord (standard generator)
+    ("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+     "bc", "bc1pgxxyvcmdncdxs06cudd5yvmwwahaesaj6n3eu7st7x4sw9hrchaqjy33gs"),
+    # 2·G x-coord
+    ("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+     "bc", "bc1pet7ep3czdu9k4wvdlz2fp5p8x2yp7t6ttyqg2c6cmh0lgeuu9lasmp9hsg"),
+    # BIP-340 test vector pubkey #1 (odd-y when uncompressed)
+    ("dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+     "bc", "bc1p0t2rw5pjcw8t5n7xphk2wharpgaxhhe0kw8huctj3r3dxampzl9slnrkml"),
+    # BIP-340 test vector pubkey from vector 0 (=sk=3)
+    ("dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+     "bc", "bc1pc20yxrvn3t0w5zgmghkfeq9ynp5k0yt7faes6w7wwxhn30z4gmtqxtls37"),
+    # Synthetic high-entropy: 0xfedc...
+    ("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+     "bc", "bc1ptenuywhuyfr8s4na6q4kwwg4w669lgpe5zrt8eyn206mpvvuq4uqee452c"),
+    # 0xaa repeated 32 times (curve-valid x)
+    ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "bc", "bc1pqzcjvryjx9gqwncdd0s72zm2atrg5ptd5vwftcyrd2pq3e7wwv9s33rgav"),
+    # Just-below-N (large valid x close to the secp256k1 group order)
+    ("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036413f",
+     "bc", "bc1p64krznl6kg3gm6rjuqkdur3wh5x9l3k68lfnznrpp777y0w95unsh3wnv3"),
+    # BIP-341 wallet-test-vectors scriptPubKey case 1 internal key
+    ("187791b6f712a8ea41c8ecdd0ee77fab3e85263b37e1ec18a3651926b3a6cf27",
+     "bc", "bc1pjxzw9tm6qatyapu3c409dg8k23p4hjlk4ehwwlsum3emjqsaetrqppyu2z"),
 ]
 
 
