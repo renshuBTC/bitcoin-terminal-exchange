@@ -192,6 +192,115 @@ def tr_key_only_address(maker_xonly: bytes, hrp: str = "bc") -> str:
     return segwit_address(1, tweaked, hrp=hrp)
 
 
+# ----------------------------- BIP-371 PSBT field mapping -----------------------------
+# Type codes per BIP-371 (Taproot fields for PSBT v0):
+#   0x13  PSBT_IN_TAP_KEY_SIG          — completed key-spend Schnorr sig (taker fills this in)
+#   0x14  PSBT_IN_TAP_SCRIPT_SIG       — script-path partial sig (n/a for tr(K))
+#   0x15  PSBT_IN_TAP_LEAF_SCRIPT      — tapscript leaf info (n/a for tr(K))
+#   0x16  PSBT_IN_TAP_BIP32_DERIVATION — per-x-only-key derivation + leaf hashes
+#   0x17  PSBT_IN_TAP_INTERNAL_KEY     — 32-byte internal x-only
+#   0x18  PSBT_IN_TAP_MERKLE_ROOT      — 32-byte merkle root (absent for tr(K))
+
+PSBT_IN_TAP_KEY_SIG         = 0x13
+PSBT_IN_TAP_SCRIPT_SIG      = 0x14
+PSBT_IN_TAP_LEAF_SCRIPT     = 0x15
+PSBT_IN_TAP_BIP32_DERIVATION = 0x16
+PSBT_IN_TAP_INTERNAL_KEY    = 0x17
+PSBT_IN_TAP_MERKLE_ROOT     = 0x18
+
+
+def tr_key_only_psbt_input_fields(
+    maker_xonly: bytes,
+    master_fingerprint: bytes = None,
+    derivation_path: bytes = None,
+) -> dict:
+    """
+    Return the canonical BIP-371 PSBT input field set for a `tr(K)` descriptor.
+
+    This is the same field set that rust-miniscript's
+    `PsbtInputExt::update_with_descriptor_unchecked(&tr(K))` would populate.
+    BTX can use this mapping when building hand-rolled PSBTs (BIP-174
+    serialiser) so external signers (Ledger / BDK / Core wallet) see the
+    canonical descriptor-implied fields and can complete the PSBT
+    correctly.
+
+    For a key-path-only `tr(K)`:
+      - tap_internal_key  = K (32 bytes)
+      - tap_key_origins   = {K: ([], (fp, path))}   — empty leaf list, BIP32 key source
+                            (the (fp, path) pair is optional; if not given,
+                            we use the canonical placeholder: zero fingerprint + empty path)
+      - tap_merkle_root   = None  (absent — no script tree)
+
+    Args:
+        maker_xonly:        32-byte x-only pubkey
+        master_fingerprint: optional 4-byte master fingerprint (BIP-32);
+                            defaults to b"\x00\x00\x00\x00" if None
+        derivation_path:    optional BIP-32 derivation path bytes (sequence
+                            of 4-byte LE u32 child numbers); defaults to
+                            empty bytes (root key)
+
+    Returns:
+        dict with keys "tap_internal_key" (32 bytes), "tap_key_origins"
+        (dict K → (leaf_hashes_list, (fp, path))), "tap_merkle_root" (None).
+    """
+    if len(maker_xonly) != 32:
+        raise ValueError(f"maker_xonly must be 32 bytes, got {len(maker_xonly)}")
+    fp = master_fingerprint if master_fingerprint is not None else b"\x00\x00\x00\x00"
+    if len(fp) != 4:
+        raise ValueError(f"master_fingerprint must be 4 bytes, got {len(fp)}")
+    path = derivation_path if derivation_path is not None else b""
+    if len(path) % 4 != 0:
+        raise ValueError(f"derivation_path must be a multiple of 4 bytes (u32 LE per child), got {len(path)}")
+
+    return {
+        "tap_internal_key": bytes(maker_xonly),
+        "tap_key_origins": {
+            bytes(maker_xonly): (
+                [],                   # leaf_hashes: empty for tr(K) key-path-only
+                (bytes(fp), bytes(path)),
+            ),
+        },
+        "tap_merkle_root": None,       # absent for tr(K)
+    }
+
+
+def encode_psbt_tap_internal_key_kv(maker_xonly: bytes) -> tuple[bytes, bytes]:
+    """
+    Canonical BIP-174/371 (key, value) pair for the PSBT_IN_TAP_INTERNAL_KEY
+    field. The key is just the type byte 0x17 (no per-key data); the value
+    is the 32-byte x-only pubkey.
+
+    Caller is responsible for the surrounding compact-size length prefixes
+    that BIP-174 wraps every key and value with.
+    """
+    if len(maker_xonly) != 32:
+        raise ValueError(f"maker_xonly must be 32 bytes")
+    return (bytes([PSBT_IN_TAP_INTERNAL_KEY]), bytes(maker_xonly))
+
+
+def encode_psbt_tap_bip32_derivation_kv(
+    maker_xonly: bytes,
+    master_fingerprint: bytes,
+    derivation_path: bytes,
+) -> tuple[bytes, bytes]:
+    """
+    Canonical BIP-371 (key, value) pair for the PSBT_IN_TAP_BIP32_DERIVATION
+    field, key-path-only case (zero leaf hashes).
+
+    Key:   0x16 || x-only-pubkey  (33 bytes total)
+    Value: compact-size(num_leaf_hashes=0) || fingerprint(4) || path(n*4)
+           Since num_leaf_hashes=0, the value reduces to: 0x00 || fp || path
+    """
+    if len(maker_xonly) != 32 or len(master_fingerprint) != 4:
+        raise ValueError("bad input lengths")
+    if len(derivation_path) % 4 != 0:
+        raise ValueError("derivation_path must be multiple of 4 bytes")
+    key = bytes([PSBT_IN_TAP_BIP32_DERIVATION]) + bytes(maker_xonly)
+    # Number of leaf hashes encoded as a single byte (0) since 0 < 0xfd.
+    value = b"\x00" + bytes(master_fingerprint) + bytes(derivation_path)
+    return (key, value)
+
+
 # ----------------------------- selftest -----------------------------
 
 
@@ -292,6 +401,57 @@ def selftest(verbose: bool = True) -> bool:
                 print(f"[descriptor] FAIL: accepted non-tr/malformed descriptor {bad!r}")
         except ValueError:
             pass
+
+    # 5. PSBT field mapping (BIP-371) — shape + canonical byte encoding
+    sample_xonly = bytes.fromhex(_GOLDEN_TR_KEY[0][0])
+    fields = tr_key_only_psbt_input_fields(sample_xonly)
+    if fields["tap_internal_key"] != sample_xonly:
+        ok = False
+        if verbose: print("[descriptor] FAIL: tap_internal_key mapping")
+    if list(fields["tap_key_origins"].keys()) != [sample_xonly]:
+        ok = False
+        if verbose: print("[descriptor] FAIL: tap_key_origins keys")
+    leaves, (fp, path) = fields["tap_key_origins"][sample_xonly]
+    if leaves != [] or fp != b"\x00\x00\x00\x00" or path != b"":
+        ok = False
+        if verbose: print(f"[descriptor] FAIL: default key origin {leaves} {fp.hex()} {path.hex()}")
+    if fields["tap_merkle_root"] is not None:
+        ok = False
+        if verbose: print("[descriptor] FAIL: tap_merkle_root should be None for tr(K)")
+
+    # PSBT_IN_TAP_INTERNAL_KEY canonical (key, value) — key is just type 0x17
+    k_int, v_int = encode_psbt_tap_internal_key_kv(sample_xonly)
+    if k_int != b"\x17" or v_int != sample_xonly:
+        ok = False
+        if verbose: print(f"[descriptor] FAIL: PSBT internal key kv encoding")
+
+    # PSBT_IN_TAP_BIP32_DERIVATION canonical (key, value) for empty fingerprint + path
+    k_d, v_d = encode_psbt_tap_bip32_derivation_kv(sample_xonly, b"\x00\x00\x00\x00", b"")
+    expected_k = b"\x16" + sample_xonly
+    expected_v = b"\x00" + b"\x00\x00\x00\x00"  # 0 leaf hashes, then fp, no path
+    if k_d != expected_k or v_d != expected_v:
+        ok = False
+        if verbose: print(f"[descriptor] FAIL: PSBT tap-bip32-derivation kv encoding")
+
+    # 6. Reject malformed PSBT mapping inputs
+    try:
+        tr_key_only_psbt_input_fields(b"\x00" * 31)  # short pubkey
+        ok = False
+        if verbose: print("[descriptor] FAIL: accepted short pubkey for PSBT fields")
+    except ValueError:
+        pass
+    try:
+        tr_key_only_psbt_input_fields(sample_xonly, master_fingerprint=b"abc")  # 3-byte fp
+        ok = False
+        if verbose: print("[descriptor] FAIL: accepted 3-byte fingerprint")
+    except ValueError:
+        pass
+    try:
+        tr_key_only_psbt_input_fields(sample_xonly, derivation_path=b"abc")  # not multiple of 4
+        ok = False
+        if verbose: print("[descriptor] FAIL: accepted non-4-multiple derivation path")
+    except ValueError:
+        pass
 
     if verbose:
         print(f"[btx_descriptor] {'ALL CHECKS PASS' if ok else 'FAILED'}")
