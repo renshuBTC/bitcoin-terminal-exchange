@@ -144,6 +144,11 @@ SUB_TESTS = [
         None,  # graceful SKIP if Node + @noble/curves not present
     ),
     (
+        "BIP-341 Taproot vs rust-bitcoin (second oracle, third language)",
+        "btx_xtest_vs_rust_bitcoin_taproot.py",
+        None,  # graceful SKIP if rb_taproot_probe binary not built
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
