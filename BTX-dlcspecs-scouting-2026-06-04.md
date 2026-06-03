@@ -254,3 +254,93 @@ License: CC0-1.0 (per repo `LICENSE.txt`)
 Examined: master HEAD at clone time 2026-06-04.
 Implementations: bitcoin-s (Scala), p2pderivatives/cfd-dlc (C++ +
 Python bindings), rust-dlc, Suredbits oracle tools.
+
+---
+
+## Phase 2 closure — additional extraction 2026-06-04
+
+After the Schnorr cross-test (Phase 1, 5×5 PASS) shipped, this session
+swept the rest of the dlcspecs artifact surface for anything else
+testable. Two more cross-tests shipped; the rest is honest defer.
+
+### Shipped
+
+**`btx_dlc_oracle.py`** — NFC normalization + `contract_id` derivation.
+
+Verbatim from `Oracle.md` §"Serialization and signing of outcome
+values" (the algorithm enumerated and quoted from the spec):
+
+> *"Outcomes which are strings must be processed by Normalization Form
+>  C (NFC) before they are signed."*
+
+Verbatim from `Protocol.md` §"Definition of contract_id":
+
+> *"Prior to a contract being accepted, a `temporary_contract_id` is
+>  used, which is the SHA256 hash of the offer message. Most messages
+>  use a `contract_id` to identify the contract. It's derived from the
+>  funding transaction and the offer by combining the `funding_txid`,
+>  the `funding_output_index` and the `temporary_contract_id`, using
+>  big-endian exclusive-OR (i.e. `funding_output_index` alters the last
+>  2 bytes of `funding_txid XOR temporary_contract_id`)."*
+
+Cross-test results against canonical vectors:
+
+| Check                                  | Vectors | Result |
+| -------------------------------------- | ------- | ------ |
+| NFC normalization → expected bytes     | 10/10   | ✓ PASS |
+| sha256(NFC bytes) → expected hash      | 10/10   | ✓ PASS |
+| contract_id XOR derivation             | 4/4     | ✓ PASS |
+
+Total: **24/24 PASS** across 6 NFC vectors (some with multiple
+visually-identical variants) and 4 contract_id vectors.
+
+Strategic note: BTX's existing `btx_dlc_demo.py` operates on `bytes`
+for `event_id` and `outcome`, leaving normalization to the caller.
+That's correct today — BTX2 `CONDITIONAL_ORDER` records don't expose a
+string-typed outcome API. `btx_dlc_oracle.py` exists for the future
+path where BTX wants to verify an attestation produced by an external
+dlcspecs-compliant tool (bitcoin-s, rust-dlc, etc.) against a Unicode
+event label specified by the maker. In that path both sides MUST do
+NFC, or visually-identical labels produce different signatures.
+
+### `btx_xtest_suite.py` is now 14 sub-tests
+
+The new line in `SUB_TESTS`:
+
+```python
+(
+    "DLC oracle NFC normalization + contract_id vs dlcspecs",
+    "btx_dlc_oracle.py",
+    "Bitcoin CoreX/dlcspecs-reference/test/dlc_hash_test.json",
+),
+```
+
+Suite expansion progression in this scout's two phases:
+- Pre-dlcspecs: 12 sub-tests (after BIP-322 P2TR + adversarial + attest
+  endpoint were wired earlier)
+- Phase 1 (dlcspecs Schnorr): 13 sub-tests
+- Phase 2 (this amendment): **14 sub-tests**
+
+### Phase 2 sweep — what else was in the repo, and why each was deferred
+
+Honest inventory of every remaining artifact and the reason it didn't
+yield a ship:
+
+| Artifact                       | Size       | Verdict                                                                                                                                       |
+| ------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test/dlc_fee_test.json`       | 472 vecs   | DEFER — fee calc for two-party DLC funding+closing tx shape. BTX uses single SIGHASH_SINGLE‖ACP atomic swap, fundamentally different layout.   |
+| `test/dlc_message_test.json`   | 8 vecs     | DEFER — DLC TLV wire format (offer_dlc_v0, accept_dlc_v0, sign_dlc_v0, cet_adaptor_signatures_v0…). BTX speaks BTX2 envelope, not DLC TLVs.   |
+| `test/dlc_tx_test.json`        | 27 vecs    | DEFER — funding tx + CET (Contract Execution Tx) + refund tx triples. BTX doesn't have the multi-party CET payout-tree pattern.               |
+| `test/ecdsa_adaptor.json`      | 11 vecs    | DEFER — ECDSA adaptor. BTX is Schnorr-only (BIP-340 + the secp256kfun-validated adaptor in `btx_adaptor.py`).                                  |
+| `test/test_vectors/` (enum+CET)| variable   | DEFER — enum + numerical CET payout vectors. Tied to PayoutCurve.md + NumericOutcome.md; no BTX equivalent to test against.                    |
+| `Oracle-Validation.md`         | 103 LOC    | DESIGN-ONLY — client trust/discovery guidance; no testable primitive.                                                                          |
+| `MultiOracle.md`               | 461 LOC    | DESIGN-ONLY — threshold-oracle DLC via MuSig2 KeyAgg + adaptor. Already documented as a bookmark in Phase 1.                                  |
+| `Non-Interactive-Protocol.md`  | 250 LOC    | DESIGN-ONLY — independently validates BTX's open-order-as-non-interactive-counterparty stance (Phase 1 bookmark).                              |
+| `NumericOutcome.md`            | 153 LOC    | DESIGN-ONLY — binary digit decomposition + range CETs for numeric oracles (e.g., BTC/USD). Relevant when BTX adds BTX3 derivatives; not now.   |
+| `NumericOutcomeCompression.md` | 21 KB doc  | DESIGN-ONLY — payout-curve compression. Same disposition as NumericOutcome.md.                                                                |
+| `PayoutCurve.md`               | 14.8 KB    | DESIGN-ONLY — payout function spec for numeric outcomes. Out of scope for BTX2's discrete enum outcomes.                                       |
+| `Transactions.md`              | 13.1 KB    | DESIGN-ONLY — funding/CET/refund layout; BTX doesn't use this tx structure.                                                                    |
+
+### Extraction-exhaustion verdict
+
+Phase 2 sweep complete. The remai

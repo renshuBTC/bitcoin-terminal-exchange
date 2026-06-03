@@ -31,6 +31,11 @@ sequences them and rolls up the results.
      Runes decoder against Magic Eden runestone-lib (19 golden vectors).
      Catches any divergence from the dormant-but-frozen ME reference.
 
+  4b. btx_dlc_oracle.py
+     NFC normalization (10 Unicode variants) + contract_id derivation
+     (4 vectors) against dlcspecs/test/{dlc_hash,contract_id}_test.json.
+     Catches drift in DLC oracle message-bytes alignment.
+
   5. btx_runestone_cenotaph_adversarial.py
      8 named cenotaph triggers + 2 controls + 50,000-shape totality fuzz.
      Catches any over/under-classification of malformed runestones.
@@ -124,6 +129,11 @@ SUB_TESTS = [
         "Bitcoin CoreX/dlcspecs-reference/test/dlc_schnorr_test.json",
     ),
     (
+        "DLC oracle NFC normalization + contract_id vs dlcspecs",
+        "btx_dlc_oracle.py",
+        "Bitcoin CoreX/dlcspecs-reference/test/dlc_hash_test.json",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
@@ -145,6 +155,10 @@ def _host_path_to_sandbox(host_relative: str) -> str:
     candidates = [
         os.path.expanduser(f"~/Documents/Claude/Projects/{host_relative}"),
         f"/mnt/c/Users/Ren Shu/Documents/Claude/Projects/{host_relative}",
+        # Sandbox mount: paths like "Bitcoin CoreX/foo/bar" are mounted at
+        # /sessions/.../mnt/Bitcoin CoreX/foo/bar — preserve the first segment.
+        f"/sessions/keen-determined-einstein/mnt/{host_relative}",
+        # Legacy form: strip the first segment (preserved for back-compat).
         f"/sessions/keen-determined-einstein/mnt/{host_relative.split('/', 1)[-1]}",
     ]
     for c in candidates:
