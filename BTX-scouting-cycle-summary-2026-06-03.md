@@ -1,8 +1,16 @@
 # BTX Scouting Cycle Summary — 2026-06-03
 
-*Master record of the eleven-repo autonomous scouting cycle run on
-2026-06-03. Each repo was cloned, deep-read, and either had code
-shipped or received an honest deferred-with-reason scouting doc.*
+*Master record of the autonomous scouting cycle run on 2026-06-03.
+Originally closed at 11 scouts (commit `5b83912`); extended to 14
+after the user's "keep going" directive. Each repo or BIP was cloned
++ deep-read; outcomes are either code shipped or honest deferred-
+with-reason scouting docs.*
+
+This document was first written at the 11-scout mark and is now post-
+amended with the 12th–14th scouts. The substantive content below
+still describes the 11-scout reasoning; see
+[Post-amendment](#post-amendment-12th-14th-scouts) at the bottom for
+the additions.
 
 ---
 
@@ -275,3 +283,59 @@ you're done with a repo, go find another one"* on 2026-06-03.
 Eleven repos scouted in one continuous session. Each cloning,
 reading, and decision recorded in its own scouting doc plus a
 git commit.
+
+---
+
+## Post-amendment (12th–14th scouts)
+
+After the 11-scout summary was shipped at commit `5b83912`, the user
+returned briefly and said **"keep going"**. Three more scouts were
+added:
+
+| # | Target | Outcome | Defer reason |
+|---|--------|---------|--------------|
+| 12 | `romanz/electrs` | spec only | **architectural-protocol** (NEW: different stack for similar role) |
+| 13 | `bitcoin/bips` (BIP-322) | **shipped code** (9th xtest sub-test) | — |
+| 14 | `bitcoin/bips` (BIP-388) | spec only | **scope-mismatch** (NEW: BTX descriptors simpler than minimum tier) |
+
+Updated totals after 14 scouts:
+
+- **6 ship / 8 spec** (extraction rate 6/14 ≈ 43%)
+- **8 distinct defer-reason categories**: operational,
+  architectural-no-use, consensus, product, era, product-timing,
+  architectural-protocol, scope-mismatch
+- **`btx_xtest_suite`**: 9/9 PASS in ~10s (was 8/8 at 11-scout mark)
+- **New code shipped post-11**: `btx_bip322.py` (244 LOC) — BIP-322
+  generic signed message foundation, 3/3 PASS on canonical vectors
+- **Pattern lesson confirmed**: large multi-BIP repos like
+  `bitcoin/bips` can yield multiple ships in one cycle if revisited
+  per-BIP. BIP-374 (scout #3) and BIP-322 (scout #13) both shipped.
+
+### Defer-category refinement
+
+The "product-timing" category (ChillDKG: BTX wants this in v1.0) and
+the new "scope-mismatch" category (BIP-388: BTX descriptors are too
+simple to benefit) were initially conflated. The distinction:
+
+- **product-timing**: feature *will* matter when BTX has more users.
+  Implementation is sized, scheduled, and triggered.
+- **scope-mismatch**: feature addresses a complexity tier BTX may
+  never enter. Bookmarked only as "if BTX's scope changes."
+
+### Final commits (chronological)
+
+```
+2668c32 Scouting: BIP-388 Wallet Policies (Ingala) — scope-mismatch
+7a45b7a Scouting: BIP-322 (kallewoof) — CODE LANDS
+b9040e8 Scouting: romanz/electrs — different protocol stack
+5b83912 Cycle summary: 11-repo autonomous scouting cycle
+cfb50db Scouting: ChillDKG — v1.0 FROST DKG upgrade roadmap
+f79bfd0 Scouting: darosior/python-bip380 — CODE LANDS
+72489d3 Scouting: petertodd/python-bitcoinlib — pre-Taproot
+8536225 Scouting: bitcoin-core/HWI — hardware-wallet interface
+7d6362e Scouting: Merkleize/pymatt — MATT covenants
+c8cabc0 Scouting: mit-dci/utreexo — UTXO accumulator
+6154743 Scouting: sipa/minisketch — set reconciliation
+```
+
+All commits pushed to `bitcoin-terminal-exchange` master.
