@@ -5,6 +5,87 @@ All notable changes to Bitcoin Terminal Exchange are recorded here. Format follo
 not yet semver-stable. Commit hashes reference the `bitcoin-terminal-exchange` repo unless prefixed `brk-btx:`
 (the companion BRK fork that does the on-chain indexing/serving).
 
+## [BIP-322 maker attestation] — 2026-06-04 — keyless proof-of-control
+
+Full-stack BIP-322 P2TR (Taproot key-path) attestation flow shipped: a desk can
+prove control of a `bc1p` address by signing a BTX-issued challenge under
+[BIP-322](https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki),
+no custodial component. The math is cross-tested against the canonical
+`bip-0322/generated-test-vectors.json`; the wire is live-tested end-to-end.
+
+**Python primitive** — `btx_bip322.py`:
+- `881b433` — simple-format sign/verify (`smp...` base64 witness stack),
+  with WIF + bech32m decode and the BIP-341 key-spend tweak helper.
+- `5433ccb` — full-format sign/verify (`ful...` base64 `to_sign` tx) with
+  parameterised `nVersion`/`nLockTime`/`nSequence` for time-locked attestations.
+- `017e163` — adversarial test battery: 21 negative cases (bad WIF/bech32m,
+  garbage base64, oversized inputs, 2-item witness, explicit hash_type,
+  tampered tx fields, type-confused addresses). All reject without crashing
+  or silently accepting.
+
+**btxd HTTP endpoints** — `0919d98`:
+- `GET /api/attest/challenge` → `{"challenge_hex":"<64 random hex>"}`.
+  Stateless 32-byte nonce a caller can send to a maker to sign.
+- `POST /api/attest/verify` body `{address, message, signature}` →
+  `{"valid": bool, "format": "simple"|"full"}`. Auto-routes by `smp`/`ful`
+  prefix. Defensive input caps (address ≤100, message ≤4 KB, signature ≤64 KB).
+  Malformed input returns 400 with a typed error; well-formed-but-not-binding
+  returns 200 with `valid:false`. Existing Host + CSRF guards apply unchanged.
+
+**Rust indexer-side verifier** — `brk-btx:1b6e619`:
+- `crates/brk_indexer/src/btx_bip322.rs` — `verify_simple_p2tr` +
+  `verify_full_p2tr`. Composes `bitcoin 0.32.x` primitives (`SighashCache` for
+  BIP-341 key-path, `secp256k1` for BIP-340 Schnorr). Zero new dependencies
+  (inlines a small base64 decoder). Typed `Bip322Error` so callers can
+  distinguish malformed input from a well-formed-but-not-binding signature.
+  6 unit tests (2 canonical + 4 negative) cover the surface.
+
+**GUI** — `btx_attest.html`:
+- New Attest page with two cards: *Generate a challenge* (calls
+  `/api/attest/challenge`, displays + copy-button) and *Verify a maker's
+  signature* (address/message/signature form, calls `/api/attest/verify`,
+  shows green/red verdict + format pill). Pre-fills the message box with
+  the freshly-generated challenge so the most common flow is a single paste.
+- Nav row updated across `btx_trade.html`, `btx_book.html`, `btx_trades.html`,
+  `btx_create.html`, `btx_wallet.html`, `btx_activity.html`, `btx_app.html`
+  to expose the new page.
+
+**Cross-validation infrastructure** — adjacent commits:
+- `f79bfd0` — descriptor checksum cross-test against
+  [`darosior/python-bip380`](https://github.com/darosior/python-bip380)'s
+  canonical implementation (Pieter Wuille's `descsum_create`).
+  Triple-validation closed: BTX goldens + `rust-miniscript` + `python-bip380`.
+- `2639e5d` — half-agg cross-test against
+  `BlockstreamResearch/secp256k1-zkp`'s hacspec spec vectors. Second canonical
+  oracle for `btx_halfagg.verify`.
+- `d3b9210` — clones audit: backfilled the missing `secp256k1-zkp` local clone
+  so future revisits can ground deep-dives in actual source.
+
+**Test suites**, all green:
+- Python `btx_xtest_suite.py`: **12/12 PASS in ~13s** (was 7/7 before this
+  series).
+- Python `btx_test_all.py`: 18/18 PASS.
+- Rust `cargo test --package brk_indexer --release`: 0 failures across the
+  full crate (260+ tests including the 6 new BIP-322 cases).
+- Live HTTP regression (7-step smoke test against a real btxd process):
+  challenge endpoint emits distinct 64-hex nonces, canonical simple + full
+  vectors verify true, tampered message returns `valid:false`, non-Taproot
+  address returns 400, malformed JSON returns 400, cross-origin POST returns
+  403 (CSRF guard).
+- UI live regression: page served at `/btx_attest.html` (200, 8 KB), all
+  expected strings present, nav links present in 8 of 8 pages, end-to-end
+  canonical-vector verify through the new page's JS fetch returns
+  `{"valid":true,"format":"simple"}`.
+
+**Scope notes** — what's not in this ship:
+- No P2WPKH (ECDSA) BIP-322 — BTX is Taproot-only by design.
+- No P2WSH multisig — BTX uses MuSig2 aggregation instead.
+- No proof-of-funds variant (`pof` prefix) — bookmarked for if/when BTX
+  exposes a maker-credentials endpoint that needs on-chain balance check.
+- The Rust `btx_bip322` module is available to the indexer but not yet
+  wired into `btx_v2_verify` (BTX2 records don't reference attestations
+  yet).
+
 ## [BTX2 foundation] — 2026-06-02 — cryptographic stack for the next BTX generation
 
 Shipped same day as B4. Three new cryptographic primitives in pure Python, all selftest-GREEN,

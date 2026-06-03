@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — attest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap">
+<link rel="stylesheet" href="assets/btx.css">
+<style>
+  *{box-sizing:border-box}
+  header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px}
+  h1{font-size:18px;margin:0;font-weight:600}
+  h1 .tag{color:var(--accent)}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .controls{margin-left:auto}
+  main{padding:18px 22px;max-width:900px}
+  h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px}
+  .section{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px 18px;margin:12px 0 24px}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12px}
+  textarea{min-height:80px;resize:vertical}
+  button.act{background:var(--accent);color:#0d1117;border:0;border-radius:6px;padding:8px 13px;font-weight:600;cursor:pointer;font-size:13px;margin-top:12px}
+  button.act:hover{filter:brightness(1.1)}
+  button.act:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .out{margin-top:14px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;min-height:1.5em}
+  .ok{border-color:var(--ok);color:var(--ok)}
+  .bad{border-color:var(--bad);color:var(--bad)}
+  .note{color:var(--muted);font-size:12px;line-height:1.55;margin:0 0 4px}
+  .row{display:flex;gap:10px;align-items:center}
+  .row > *{flex:1}
+  .copy{cursor:pointer;color:var(--accent);font-family:var(--mono);font-size:11px;border:none;background:none;padding:0;margin-left:8px}
+  .copy:hover{text-decoration:underline}
+  code{font-family:var(--mono);background:var(--panel);padding:1px 5px;border-radius:3px}
+  .pillrow{display:flex;gap:8px;font-size:11px;color:var(--muted);margin-top:6px}
+  .pillrow span{padding:2px 8px;border:1px solid var(--border);border-radius:99px}
+  .pillrow span.on{color:var(--accent);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="bt-nav">
+  <span class="bt-logo">BT<b>X</b></span>
+  <div class="bt-navlinks"><a href="btx_trade.html">Trade</a><a href="btx_book.html">Book</a><a href="btx_trades.html">Trades</a><a href="btx_create.html">Create</a><a href="btx_attest.html" class="on">Attest</a><a href="btx_wallet.html">Wallet</a><a href="btx_activity.html">Activity</a><a href="https://github.com/renshuBTC" target="_blank" rel="noopener">Docs</a></div>
+</div>
+
+<header>
+  <div><h1>BT<span class="tag">X</span> — attestation</h1></div>
+  <div class="controls"><a href="btx_book.html">← order book</a></div>
+</header>
+
+<main>
+  <p class="note">
+    Maker attestations let a desk prove control of a <code>bc1p</code> Taproot address
+    by signing a BTX-issued challenge under BIP-322. The desk's wallet signs locally;
+    btxd only verifies. No custodial component — your keys never leave your wallet.
+  </p>
+
+  <h2>1. Generate a challenge</h2>
+  <div class="section">
+    <p class="note">
+      Click <b>generate</b> for a fresh 32-byte nonce. Send it to a maker over any
+      channel; ask them to BIP-322-sign it under their <code>bc1p</code> maker
+      address (Sparrow, BlueWallet, Magic Eden, Specter, and Saturn all support
+      bc1p BIP-322 signing today). Paste the signature back below.
+    </p>
+    <div class="row" style="margin-top:10px">
+      <button class="act" onclick="generateChallenge()">generate challenge</button>
+    </div>
+    <div class="out" id="chl_out">no challenge yet</div>
+    <div id="chl_copy_wrap" style="margin-top:4px"></div>
+  </div>
+
+  <h2>2. Verify a maker's signature</h2>
+  <div class="section">
+    <p class="note">
+      Paste the maker's <code>bc1p</code> address, the exact message they signed
+      (usually the challenge from step 1), and their BIP-322 signature string.
+      Both <code>smp...</code> (simple) and <code>ful...</code> (full, with
+      timelocks) formats are supported.
+    </p>
+    <label>address</label>
+    <input id="addr" placeholder="bc1p…">
+    <label>message</label>
+    <textarea id="msg" placeholder="The exact bytes the maker signed."></textarea>
+    <label>signature</label>
+    <textarea id="sig" placeholder="smp... or ful..."></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="act" onclick="verifySig()">verify</button>
+    </div>
+    <div class="out" id="ver_out">no signature submitted yet</div>
+    <div class="pillrow" id="ver_pills" style="display:none"></div>
+  </div>
+
+  <h2>3. Endpoints (CLI reference)</h2>
+  <div class="section">
+    <p class="note">If you want to wire this into a script:</p>
+<pre class="out" style="white-space:pre">
+GET  /api/attest/challenge
+     → {"challenge_hex":"&lt;64-hex&gt;"}
+
+POST /api/attest/verify
+     body: {"address","message","signature"}
+     → {"valid":bool,"format":"simple"|"full"}
+     Malformed input → 400 with informative error.</pre>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+function copyButton(text){
+  const id='c'+Math.random().toString(36).slice(2);
+  setTimeout(()=>{const el=document.getElementById(id); if(el) el.onclick=()=>{
+    navigator.clipboard.writeText(text);
+    el.textContent='copied';
+    setTimeout(()=>{el.textContent='copy';},1200);
+  };},0);
+  return '<button class="copy" id="'+id+'">copy</button>';
+}
+
+async function generateChallenge(){
+  const out = $('#chl_out');
+  out.className = 'out';
+  out.textContent = 'requesting nonce…';
+  try {
+    const r = await fetch('/api/attest/challenge', {headers:{'Accept':'application/json'}});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const j = await r.json();
+    if (!j.challenge_hex || j.challenge_hex.length !== 64) throw new Error('bad shape');
+    out.textContent = j.challenge_hex;
+    out.className = 'out ok';
+    $('#chl_copy_wrap').innerHTML = copyButton(j.challenge_hex);
+    // Convenience: pre-fill the message box so the user just needs to paste sig.
+    $('#msg').value = j.challenge_hex;
+  } catch (e) {
+    out.textContent = 'failed: ' + e.message;
+    out.className = 'out bad';
+  }
+}
+
+async function verifySig(){
+  const addr = $('#addr').value.trim();
+  const msg = $('#msg').value;
+  const sig = $('#sig').value.trim();
+  const out = $('#ver_out');
+  const pills = $('#ver_pills');
+  out.className = 'out';
+  out.textContent = 'verifying…';
+  pills.style.display = 'none';
+
+  if (!addr || !msg || !sig){
+    out.textContent = 'fill in address, message, and signature first';
+    out.className = 'out bad';
+    return;
+  }
+  try {
+    const r = await fetch('/api/attest/verify', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({address: addr, message: msg, signature: sig}),
+    });
+    const j = await r.json();
+    if (r.status !== 200){
+      out.textContent = 'HTTP ' + r.status + ' — ' + (j.error || JSON.stringify(j));
+      out.className = 'out bad';
+      return;
+    }
+    if (j.valid === true){
+      out.textContent = '✓ valid — maker proved control of ' + addr;
+      out.className = 'out ok';
+    } else {
+      out.textContent = '✗ NOT valid — signature does not match (address × message)';
+      out.className = 'out bad';
+    }
+    pills.style.display = 'flex';
+    pills.innerHTML =
+        '<span class="on">format: ' + (j.format || '?') + '</span>' +
+        '<span>address: ' + addr.slice(0, 14) + '…</span>' +
+        '<span>message bytes: ' + msg.length + '</span>';
+  } catch (e) {
+    out.textContent = 'network error: ' + e.message;
+    out.className = 'out bad';
+  }
+}
+</script>
+</body>
+</html>
