@@ -81,7 +81,7 @@ def main():
         if not bip327_ok:
             bip327_self_ok = False
 
-        # 2. Run BTX's key_agg with x-only-truncated inputs
+        # 2. Run BTX's NON-canonical key_agg with x-only-truncated inputs
         case_xonly_inputs = [pk[1:33] for pk in case_pubkeys]  # strip parity byte
         try:
             btx_result = btx.key_agg(case_xonly_inputs)
@@ -95,26 +95,52 @@ def main():
         if not btx_matches_bip327:
             all_match_bip327 = False
 
+        # 3. Run BTX's NEW canonical key_agg_bip327 with the 33-byte compressed inputs
+        try:
+            btx_bip327_result = btx.key_agg_bip327(case_pubkeys)
+            btx_bip327_xonly = btx_bip327_result["agg_xonly"]
+        except Exception as e:
+            btx_bip327_xonly = b""
+            print(f"[case {i}] BTX key_agg_bip327 raised: {e}")
+
+        btx_bip327_matches = btx_bip327_xonly == expected
+
         print(f"[case {i}] indices={indices}")
-        print(f"   expected (canonical):     {expected_xonly_hex}")
-        print(f"   bip327 reference output:  {bip327_xonly.hex().upper()}")
-        print(f"   btx_musig2 output:        {btx_xonly.hex().upper()}")
-        print(f"   bip327 matches expected:  {bip327_ok}")
-        print(f"   btx   matches bip327:     {btx_matches_bip327}")
-        print(f"   btx   matches expected:   {btx_matches_expected}")
+        print(f"   expected (canonical):       {expected_xonly_hex}")
+        print(f"   bip327 reference output:    {bip327_xonly.hex().upper()}")
+        print(f"   btx_musig2 (x-only variant):{btx_xonly.hex().upper()}")
+        print(f"   btx key_agg_bip327 output:  {btx_bip327_xonly.hex().upper()}")
+        print(f"   bip327 matches expected:    {bip327_ok}")
+        print(f"   btx variant matches bip327: {btx_matches_bip327}")
+        print(f"   btx CANONICAL matches expt: {'✓ ' + str(btx_bip327_matches) if btx_bip327_matches else '✗ ' + str(btx_bip327_matches)}")
         print()
 
+    # Re-run cases for the canonical-variant summary
+    all_canonical_match = True
+    for tc in valid:
+        case_pubkeys = [pubkeys[j] for j in tc["key_indices"]]
+        expected = bytes.fromhex(tc["expected"])
+        result = btx.key_agg_bip327(case_pubkeys)
+        if result["agg_xonly"] != expected:
+            all_canonical_match = False
+
     print(f"=== Summary ===")
-    print(f"BIP-327 reference matches its own vectors: {bip327_self_ok}")
-    print(f"BTX btx_musig2 matches BIP-327:            {all_match_bip327}")
+    print(f"BIP-327 reference matches its own vectors:      {bip327_self_ok}")
+    print(f"BTX btx_musig2.key_agg (x-only) matches BIP-327:{all_match_bip327}")
+    print(f"BTX btx_musig2.key_agg_bip327 matches BIP-327:  {all_canonical_match}")
+
+    if all_canonical_match:
+        print()
+        print("✓ FOURTH-POINT VALIDATION CONFIRMED")
+        print("  Canonical reference + 4 official vectors + BTX canonical impl agree.")
+        print("  BTX now has both variants:")
+        print("    - key_agg          : x-only-input MuSig2-like (BTX-internal use)")
+        print("    - key_agg_bip327   : canonical BIP-327 (external interop)")
 
     if not all_match_bip327:
         print()
-        print("FINDING: BTX's MuSig2 KeyAgg is NOT BIP-327 byte-compatible.")
-        print("This is a real divergence to record in the closure doc.")
-        print("Both implementations are valid MuSig2-like KeyAgg constructions,")
-        print("but they differ in (a) input encoding (x-only vs compressed), and")
-        print("(b) list-hash input bytes (32 vs 33 per pubkey).")
+        print("FINDING (carried from previous test): btx_musig2.key_agg is x-only variant.")
+        print("Closed-with-finding via the parallel key_agg_bip327 above.")
 
     return 0
 

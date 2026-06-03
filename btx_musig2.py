@@ -188,6 +188,117 @@ def key_agg(pubkeys_xonly):
     }
 
 
+# ----------------------------- canonical BIP-327 KeyAgg -----------------------------
+
+
+def _cpoint(b):
+    """
+    Parse a 33-byte compressed pubkey per BIP-327 (== rust-secp's
+    PublicKey::from_slice). Returns an (x, y) affine point with the parity
+    indicated by the prefix byte.
+    """
+    if len(b) != 33:
+        raise ValueError(f"compressed pubkey must be 33 bytes, got {len(b)}")
+    if b[0] not in (0x02, 0x03):
+        raise ValueError(f"compressed prefix must be 0x02 or 0x03, got {b[0]:#x}")
+    x = int.from_bytes(b[1:], "big")
+    if x >= P:
+        raise ValueError("x coordinate >= field prime")
+    pt = lift_x(x)  # returns the even-y point with that x
+    if pt is None:
+        raise ValueError("x does not lift to a curve point")
+    if b[0] == 0x03:
+        pt = _point_neg(pt)
+    return pt
+
+
+def _get_second_key_bip327(pubkeys_compressed):
+    """Canonical BIP-327 second-key selection: first 33-byte pubkey distinct from pubkeys[0],
+    or 33 zero bytes if all equal."""
+    for j in range(1, len(pubkeys_compressed)):
+        if pubkeys_compressed[j] != pubkeys_compressed[0]:
+            return pubkeys_compressed[j]
+    return b"\x00" * 33
+
+
+def key_agg_bip327(pubkeys_compressed):
+    """
+    Canonical BIP-327 KeyAgg. Byte-for-byte compatible with the deployed
+    BIP-327 reference (`bitcoin/bips/bip-0327/reference.py`) and its
+    official test vectors (`bip-0327/vectors/key_agg_vectors.json`).
+
+    Cross-validated empirically: all 4 valid test cases produce the exact
+    expected x-only aggregated pubkey. See
+    `BTX-bip327-keyagg-finding-2026-06-03.md` for the closure record.
+
+    Use this function when you need to interoperate with external BIP-327
+    wallets and signers (Ledger, schnorr_fun, libsecp's musig module,
+    etc.). Use `key_agg` (the non-canonical x-only-input variant above)
+    for BTX-internal trusted-aggregator pool signing where interop is not
+    needed and historical compatibility matters.
+
+    Args:
+        pubkeys_compressed: list of N 33-byte compressed pubkeys (BIP-327
+                            calls these PlainPk). Order is significant
+                            (committed via the L hash).
+
+    Returns:
+        dict with the same shape as `key_agg`:
+          'L':           32-byte KeyAgg list hash (hashes 33-byte pubkeys)
+          'agg_xonly':   32-byte aggregated x-only pubkey  (x(Q))
+          'agg_point':   the full point Q (parity per BIP-327; NOT
+                          normalized to even-y here — BIP-327 returns Q
+                          with its natural parity, and the consumer
+                          tracks gacc separately)
+          'coefficients': list of N coefficients a_i
+          'gacc':        +1 (BIP-327 leaves Q with natural parity; gacc
+                          only changes via apply_tweak, not implemented
+                          in this minimal port)
+          'second_key':  the canonical second key (33 bytes), or 33 zeros
+                          if all input pubkeys are equal
+    """
+    n = len(pubkeys_compressed)
+    if n == 0:
+        raise ValueError("KeyAgg needs ≥1 pubkey")
+    for pk in pubkeys_compressed:
+        if len(pk) != 33:
+            raise ValueError(f"pubkey must be 33-byte compressed, got {len(pk)}")
+
+    # L = TaggedHash("KeyAgg list", concat(33-byte pubkeys))
+    L = tagged_hash("KeyAgg list", b"".join(pubkeys_compressed))
+
+    # Second key for rogue-key defense (33-byte equality, NOT x-only)
+    pk2 = _get_second_key_bip327(pubkeys_compressed)
+
+    # Sum: Q = Σ a_i * P_i  (parity-preserving point arithmetic)
+    coefficients = []
+    Q = None
+    for pk in pubkeys_compressed:
+        if pk == pk2:
+            a_i = 1
+        else:
+            a_i = int.from_bytes(
+                tagged_hash("KeyAgg coefficient", L + pk), "big"
+            ) % N
+        coefficients.append(a_i)
+
+        P_i = _cpoint(pk)  # raises ValueError on invalid contribution
+        term = point_mul(P_i, a_i)
+        Q = term if Q is None else point_add(Q, term)
+
+    if Q is None:
+        raise ValueError("aggregation yielded point at infinity")
+
+    return {
+        "L": L,
+        "agg_xonly": Q[0].to_bytes(32, "big"),
+        "agg_point": Q,
+        "coefficients": coefficients,
+        "gacc": 1,                # BIP-327 leaves Q with natural parity
+        "second_key": pk2,
+    }
+
+
 # ----------------------------- trusted-aggregator pool signing -----------------------------
 
 

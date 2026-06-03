@@ -121,16 +121,67 @@ Effort: ~1 day (implementation + golden test + tamper tests).
 Rationale: enables future BTX2 interop with hardware wallets and
 external MuSig2 signers. Doesn't break any existing BTX path.
 
-## Recommendation
+## What was actually shipped
 
-**Path A this session, Path B bookmarked for "if external MuSig2
-interop becomes a product driver."**
+**Both Path A AND Path B landed this session.**
 
-The cross-validation has already done its job — surfacing that BTX's
-MuSig2 is a variant rather than the canonical algorithm. Closing the
-finding here without re-implementing matches the same discipline used
-for the Schnorr adaptor divergence in
-`BTX-adaptor-triple-validation-2026-06-03.md`.
+### Path A — done (docstring warning)
+
+`btx_musig2.key_agg` now carries a prominent `⚠ DIVERGENCE FROM
+CANONICAL BIP-327` warning in its docstring quoting the two causes and
+the practical impact. No behaviour change; existing pool-sign callers
+continue working unchanged.
+
+### Path B — done (canonical variant alongside)
+
+Added `btx_musig2.key_agg_bip327(pubkeys_compressed)` — a byte-for-byte
+port of the canonical BIP-327 KeyAgg algorithm from
+`bitcoin/bips/bip-0327/reference.py` lines 193–228.
+
+The cross-test (`btx_bip327_xtest.py`) now runs BOTH variants against
+the 4 official vectors:
+
+| Case | Canonical expected (first 8 hex) | BIP-327 ref | BTX x-only variant | BTX canonical | BTX canonical matches |
+|------|----------------------------------|-------------|--------------------|---------------|-----------------------|
+| 0    | 90539EED…                        | 90539EED… ✓ | E5830140… ✗        | 90539EED…     | **✓**                 |
+| 1    | 6204DE8B…                        | 6204DE8B… ✓ | D70CD69A… ✗        | 6204DE8B…     | **✓**                 |
+| 2    | B436E3BA…                        | B436E3BA… ✓ | 81A8B093… ✗        | B436E3BA…     | **✓**                 |
+| 3    | 69BC22BF…                        | 69BC22BF… ✓ | 2EB18851… ✗        | 69BC22BF…     | **✓**                 |
+
+**Fourth-point validation:** canonical BIP-327 reference + 4 official
+vectors + BTX's new canonical implementation all agree byte-for-byte.
+This is the Runes-style multi-source validation that the original
+followup was trying to achieve, finally landed.
+
+### Choosing between the two variants
+
+BTX users now have two parallel KeyAgg functions:
+
+| When to use                              | Function              | Input shape         | Wire-format result |
+|------------------------------------------|-----------------------|---------------------|--------------------|
+| BTX-internal trusted-aggregator pool     | `key_agg`             | 32-byte x-only      | x-only variant     |
+| External MuSig2 wallet interop (Ledger,  | `key_agg_bip327`      | 33-byte compressed  | canonical BIP-327  |
+| schnorr_fun, libsecp musig, etc.)        |                       |                     |                    |
+| Cross-test / vector verification         | `key_agg_bip327`      | 33-byte compressed  | matches all 4 vectors |
+
+`pool_sign_demo` and `btx_pool_publish` continue to use `key_agg`
+(unchanged). A future "BIP-327-interop pool sign" function would use
+`key_agg_bip327`, but no current product driver requires it; one-line
+note added to the closure doc and watchlist.
+
+## What this gives BTX
+
+Three concrete capabilities that didn't exist before this session:
+
+1. **Trusted source-of-truth for canonical BIP-327 outputs.** Any
+   future BTX work that wants to test against the canonical spec can
+   call `key_agg_bip327` and trust the output matches v1.0.3 Deployed.
+2. **An external-interop hook.** If/when a Ledger or schnorr_fun-based
+   maker wants to participate in a BTX pool, the canonical KeyAgg is
+   already there waiting.
+3. **An empirical record of the divergence** — so future BTX
+   engineers don't waste cycles debugging a "why doesn't this verify"
+   issue when mixing the two variants.
 
 ## Compared to the secp256kfun adaptor finding
 
