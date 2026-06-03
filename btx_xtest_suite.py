@@ -109,6 +109,11 @@ SUB_TESTS = [
         None,
     ),
     (
+        "/api/attest endpoint (challenge + verify, in-process)",
+        "btx_attest_endpoint_test.py",
+        None,
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself

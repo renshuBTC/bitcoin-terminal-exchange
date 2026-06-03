@@ -864,6 +864,108 @@ def h_rune_countersign(body):
     return _first_json(out), 200
 
 
+# =====================================================================
+# /api/attest — BIP-322 attestation endpoints (maker-identity attestation)
+# =====================================================================
+#
+# Two endpoints:
+#   GET  /api/attest/challenge          → emits a random 32-byte hex nonce
+#                                         the caller can ask a maker to sign
+#   POST /api/attest/verify             → verifies a BIP-322 signature
+#                                         (simple or full format) for a
+#                                         bc1p Taproot address
+#
+# Both are read-only with respect to BTX wallet state — they do NOT sign
+# anything server-side (signing would imply server-held keys, which BTX
+# rejects by design). The maker's wallet does the signing; btxd verifies.
+#
+# Trust boundary: same as the rest of btxd (loopback + Host allowlist +
+# CSRF guard already applied at the outer dispatcher).
+
+# Defensive caps. Way smaller than MAX_BODY so the verify path is bounded
+# even if an attacker tries to feed huge payloads. BIP-350 caps real
+# addresses at 90 chars; BIP-322 simple-format signatures are usually
+# ~88-120 chars; the full format can be larger but is still well under 4 KB.
+_ATTEST_MAX_ADDR_LEN = 100
+_ATTEST_MAX_MSG_LEN = 4096
+_ATTEST_MAX_SIG_LEN = 65536
+
+
+def h_attest_challenge():
+    """Emit a fresh 32-byte challenge nonce for a maker to BIP-322 sign.
+    Stateless — the caller's responsibility to remember which challenges
+    they've issued and to which maker."""
+    import secrets
+    return {"challenge_hex": secrets.token_hex(32)}
+
+
+def h_attest_verify(body):
+    """Verify a BIP-322 signature (simple or full format) for a Taproot
+    address. Returns {valid: bool, format: "simple"|"full"} on success;
+    {error: ..., type: ...} on malformed input.
+
+    Body shape:
+      address    : bech32m bc1p... (or tb1p...) Taproot address
+      message    : the message that was signed (utf-8 string)
+      signature  : "smp..." (simple) or "ful..." (full) base64 string
+    """
+    # Shape validation first. Each failed shape check returns a 400 so
+    # callers know it's their bug, not ours.
+    if not isinstance(body, dict):
+        return {"error": "body must be an object"}, 400
+    addr = body.get("address")
+    msg = body.get("message")
+    sig = body.get("signature")
+    if not isinstance(addr, str) or not (1 <= len(addr) <= _ATTEST_MAX_ADDR_LEN):
+        return {"error": "address must be a string up to %d chars"
+                % _ATTEST_MAX_ADDR_LEN}, 400
+    if not isinstance(msg, str) or len(msg) > _ATTEST_MAX_MSG_LEN:
+        return {"error": "message must be a string up to %d bytes"
+                % _ATTEST_MAX_MSG_LEN}, 400
+    if not isinstance(sig, str) or not (3 <= len(sig) <= _ATTEST_MAX_SIG_LEN):
+        return {"error": "signature must be a string with the variant "
+                "prefix (smp/ful) and at most %d chars" % _ATTEST_MAX_SIG_LEN}, 400
+
+    # Defensive HRP gate: we only support bech32m Taproot. Anything else
+    # is out of scope here, so reject early rather than dragging the
+    # verifier through unrelated paths.
+    if not (addr.startswith("bc1p") or addr.startswith("tb1p")):
+        return {"error": "only Taproot (bc1p/tb1p) addresses are supported"}, 400
+
+    # Variant routing. Anything else than smp/ful is rejected — no
+    # mystery prefix is allowed to slip through to a verifier that
+    # silently returns False (that would conflate "bad sig" with
+    # "unsupported format").
+    prefix = sig[:3]
+    if prefix not in ("smp", "ful"):
+        return {"error": "unknown signature variant; supported: smp, ful"}, 400
+
+    # Now do the verify. Import lazily so a btxd startup that doesn't
+    # touch /api/attest doesn't pay the BIP-322 import cost.
+    try:
+        import btx_bip322 as B
+    except ImportError as e:
+        return {"error": "btx_bip322 unavailable", "detail": str(e)}, 500
+
+    # Use the bc HRP for the verifier (BTX is on mainnet today; if/when
+    # signet/testnet attestations need full coverage, the verifier
+    # accepts either by selecting via the address prefix).
+    target_hrp = "bc" if addr.startswith("bc1p") else "tb"
+    if target_hrp == "tb":
+        # btx_bip322 currently hard-codes the bc HRP in decode_segwit_address;
+        # to keep the surface small we explicitly say "we only verify mainnet
+        # Taproot today" rather than silently misreading.
+        return {"error": "signet/testnet Taproot attestation verification not "
+                         "wired in btxd yet (btx_bip322 expects bc HRP)"}, 501
+
+    if prefix == "smp":
+        valid = B.verify_simple_p2tr(msg, addr, sig)
+        return {"valid": bool(valid), "format": "simple"}
+    else:  # "ful"
+        valid = B.verify_full_p2tr(msg, addr, sig)
+        return {"valid": bool(valid), "format": "full"}
+
+
 # ----------------------------- HTTP plumbing -----------------------------
 _DEX_READS = {"orders", "groups", "history", "swaps", "trades", "mempool", "book-root", "event-hash", "event-stream"}
 # Upstream BRK (Bitcoin Research Kit) routes proxied under /api/brk/<name>. These are on-chain-derived
@@ -1008,6 +1110,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(lambda: self._send(h_mining_info()))
         if p == "/api/mining/template":
             return self._guard(lambda: self._send(h_mining_template()))
+        if p == "/api/attest/challenge":
+            return self._guard(lambda: self._send(h_attest_challenge()))
         if p.startswith("/api/brk/"):
             name = p[len("/api/brk/"):]
             # 1) flat allowlist for the BRK upstream /api/v1/<name> routes
@@ -1143,6 +1247,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/swap/countersign": lambda: h_addressed_countersign(body),
             "/api/swap/rune-propose": lambda: h_rune_propose(body),
             "/api/swap/rune-countersign": lambda: h_rune_countersign(body),
+            "/api/attest/verify": lambda: h_attest_verify(body),
         }
         if p not in routes:
             return self._send({"error": "not found", "path": p}, 404)
