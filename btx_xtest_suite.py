@@ -149,6 +149,11 @@ SUB_TESTS = [
         None,  # graceful SKIP if rb_taproot_probe binary not built
     ),
     (
+        "BIP-322 P2TR vs bip322-js (closes ecosystem-gap bookmark)",
+        "btx_xtest_vs_bip322_js.py",
+        None,  # graceful SKIP if Node + bip322-js not installed
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
