@@ -252,21 +252,67 @@ The first three closed out the crypto-primitive surface. `rust-miniscript`
 opens a new surface (script policy) that BTX hasn't yet decided to
 inhabit.
 
-## Verdict
+## Verdict — REVISED after deeper dive
 
-`rust-miniscript` is excellent engineering and the canonical Bitcoin
-script-policy library. **For BTX's current scope (key-path-only BTX2
-orders, fixed-pubkey makers, trusted-aggregator pool sign), there is no
-direct extraction to ship.**
+The first-pass verdict ("no code lands") was wrong. A deeper read of
+`examples/taproot.rs`, `src/descriptor/tr/mod.rs`, and
+`src/descriptor/checksum.rs` surfaced a concrete extraction point at
+**the simple end of the descriptor surface**:
 
-The repo's value to BTX is as a **forward-looking design reference**:
-when BTX decides to move from "key-path orders signed by a single
-maker pubkey" to "script-path orders with declarative policy",
-rust-miniscript is the canonical implementation to consume (as a Rust
-dependency) or to port (selectively to Python).
+**`btx_descriptor.py` SHIPPED THIS SESSION** (~280 LOC):
 
-Bookmarked. No code lands this session. The honest "what got extracted"
-column is empty.
+- Parses and serialises `tr(<x-only-hex>)` descriptors (key-path-only
+  Taproot)
+- Computes canonical BIP-380 checksums (byte-identical to
+  `rust-miniscript::descriptor::checksum`)
+- Produces canonical bc1p... addresses for any maker x-only pubkey
+- 3-vector cross-test against a real `rust-miniscript`-built Rust
+  probe:
+
+| x-only pubkey input (first 16 hex) | BTX address                    | rust-miniscript address        |
+|------------------------------------|--------------------------------|--------------------------------|
+| d6889cb081036e0f...                | bc1p2wsldez5mud2y...59h4z5     | bc1p2wsldez5mud2y...59h4z5 ✓   |
+| 50929b74c1a04954...                | bc1prykz5vxt6lgr2t...5grvgr    | bc1prykz5vxt6lgr2t...5grvgr ✓  |
+| f9308a019258c310...                | bc1pgxxyvcmdncdxs0...y33gs     | bc1pgxxyvcmdncdxs0...y33gs ✓   |
+
+And canonical descriptor checksums also match byte-for-byte
+(`zd5eym6u`, `pg0pl855`, `5ceacj8z`).
+
+This unlocks:
+- **Canonical maker pubkey publication**: BTX can publish
+  `tr(<maker_xonly>)#<csum>` strings that any BIP-380-compliant
+  wallet (Ledger / Coldcard / Jade / BDK / Core wallet) understands
+  byte-exactly.
+- **Cross-test for any future drift** in BTX's Taproot foundation
+  (every change to `btx_taproot.taproot_tweak_pubkey` is now
+  cross-checked against rust-miniscript via `btx_descriptor.py`'s
+  golden vectors).
+- **Building block for BTX3** if/when BTX moves to script-path orders
+  — the descriptor STRING surface is already plumbed.
+
+The wider rust-miniscript machinery (Policy compiler, `plan.rs`
+satisfaction, `psbt/` finalisation, the full Miniscript language) is
+still bookmarked as BTX3 work — that part of the original verdict
+stands.
+
+### Lessons from the false-start
+
+I initially called "no extraction" after reading only ~80 lines of
+`policy/mod.rs` and `policy/concrete.rs`. That was premature. The
+extractable piece is at the **simplest** end of the descriptor
+hierarchy (`tr(K)` key-only), not the complex policy-compiler end.
+
+There was also a one-line implementation bug worth pinning: my first
+draft of `descriptor_checksum` conflated `cls` (the running polynomial
+value) with `clscount` (the 0-3 counter). Bitcoin Core's reference
+keeps them separate. All 3 vectors diverged from canonical until the
+fix. The fix surfaced because I built the rust-miniscript probe and
+compared — the kind of cross-validation that catches transcription
+errors the polymod constants alone wouldn't reveal.
+
+This is the same discipline as the BIP-340/341/327/374 foundation
+work: build a probe against the canonical reference; compare byte by
+byte; fix anything that diverges.
 
 ## File index
 
