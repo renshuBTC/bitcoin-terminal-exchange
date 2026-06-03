@@ -139,6 +139,11 @@ SUB_TESTS = [
         None,  # graceful SKIP if neither python-bitcointx nor libsecp256k1 present
     ),
     (
+        "BIP-340 vs @noble/curves (pure-JS via paulmillr/scure-btc-signer)",
+        "btx_xtest_vs_noble_secp256k1.py",
+        None,  # graceful SKIP if Node + @noble/curves not present
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
