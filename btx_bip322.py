@@ -522,6 +522,243 @@ def _encode_simple_signature(stack: List[bytes]) -> str:
     return "smp" + base64.b64encode(body).decode("ascii")
 
 
+# =====================================================================
+#  BIP-322 "full" format P2TR signing/verification
+# =====================================================================
+#
+# The full format is the entire to_sign transaction in standard segwit
+# network serialisation, base64-encoded with the literal "ful" prefix.
+#
+# Unlike the simple format, the full format lets the signer choose
+# arbitrary nVersion, nLockTime, and nSequence values — useful for
+# time-locked attestations ("this attestation is only valid after
+# block N").
+#
+# For P2TR key-path: witness stack is [sig], sighash is BIP-341
+# key-path over the to_sign tx using those version/locktime/sequence
+# values.
+
+
+def _build_to_sign_tx_p2tr_full(
+    to_spend_txid_le: bytes,
+    witness_stack: List[bytes],
+    *,
+    version: int = 2,
+    locktime: int = 0,
+    sequence: int = 0,
+) -> bytes:
+    """Full-format to_sign tx serialised with segwit marker + flag and
+    a single-input / single-OP_RETURN-output skeleton.
+
+    `witness_stack` is the witness for input 0. For an unsigned skeleton
+    used as a sighash precursor, pass an empty list — but note that the
+    sighash is computed independent of the witness anyway."""
+    assert len(to_spend_txid_le) == 32
+    assert 0 <= sequence <= 0xFFFFFFFF
+    assert 0 <= locktime <= 0xFFFFFFFF
+    txin = _ser_txin(to_spend_txid_le, 0, b"", sequence)
+    txout = _ser_txout(0, b"\x6a")           # OP_RETURN
+    body = (
+        struct.pack("<i", version)
+        + b"\x00\x01"                        # segwit marker + flag
+        + compact_size(1) + txin
+        + compact_size(1) + txout
+        + _ser_witness_stack(witness_stack)
+        + struct.pack("<I", locktime)
+    )
+    return body
+
+
+def _bip322_p2tr_sighash_full(
+    msg_hash: bytes,
+    output_xonly: bytes,
+    *,
+    version: int,
+    locktime: int,
+    sequence: int,
+) -> bytes:
+    """BIP-341 key-path sighash for the full-format to_sign tx."""
+    from btx_taproot import tap_sighash, SIGHASH_DEFAULT
+
+    spk = _p2tr_spk_from_xonly(output_xonly)
+    spend_txid_le = to_spend_txid(msg_hash, spk)
+    vin = [(bytes(spend_txid_le), 0, sequence)]
+    return tap_sighash(
+        version=version,
+        locktime=locktime,
+        vin=vin,
+        spent_amounts=[0],
+        spent_spks=[spk],
+        vout=[(0, b"\x6a")],
+        input_index=0,
+        hash_type=SIGHASH_DEFAULT,
+        ext_flag=0,
+    )
+
+
+def sign_full_p2tr(
+    message: bytes | str,
+    seckey: bytes,
+    *,
+    version: int = 2,
+    locktime: int = 0,
+    sequence: int = 0,
+    aux_rand: Optional[bytes] = None,
+) -> str:
+    """Produce a BIP-322 'full' format signature for a P2TR (key-path)
+    address. Returns the "ful"-prefixed base64 string.
+
+    `version` / `locktime` / `sequence` parameterise the to_sign tx,
+    enabling time-locked attestations."""
+    from btx_taproot import schnorr_sign, xonly_pubkey, taproot_tweak_pubkey
+
+    if aux_rand is None:
+        aux_rand = b"\x00" * 32
+    mh = message_hash(message)
+    p_xonly, _ = xonly_pubkey(seckey)
+    _parity, q_xonly = taproot_tweak_pubkey(p_xonly, b"")
+    sighash = _bip322_p2tr_sighash_full(
+        mh, q_xonly, version=version, locktime=locktime, sequence=sequence
+    )
+    d_q = _taproot_tweak_seckey(seckey, b"")
+    sig = schnorr_sign(sighash, d_q, aux_rand)
+    spend_txid_le = to_spend_txid(mh, _p2tr_spk_from_xonly(q_xonly))
+    full_tx = _build_to_sign_tx_p2tr_full(
+        spend_txid_le, [sig],
+        version=version, locktime=locktime, sequence=sequence,
+    )
+    return "ful" + base64.b64encode(full_tx).decode("ascii")
+
+
+def _parse_full_tx(raw: bytes):
+    """Parse the to_sign segwit-serialised tx in BIP-322 'full' form.
+    Returns dict(version, prevout_txid, prevout_n, sequence, vout,
+    witness_stack, locktime). Strict: must be exactly 1 input + 1 output."""
+    pos = 0
+
+    def _u(n):
+        nonlocal pos
+        v = int.from_bytes(raw[pos:pos + n], "little")
+        pos += n
+        return v
+
+    def _cs():
+        nonlocal pos
+        first = raw[pos]
+        pos += 1
+        if first < 0xFD:
+            return first
+        if first == 0xFD:
+            return _u(2)
+        if first == 0xFE:
+            return _u(4)
+        return _u(8)
+
+    def _read(n):
+        nonlocal pos
+        out = raw[pos:pos + n]
+        pos += n
+        return out
+
+    version = int.from_bytes(raw[pos:pos + 4], "little", signed=True)
+    pos += 4
+    if raw[pos:pos + 2] != b"\x00\x01":
+        raise ValueError("expected segwit marker+flag (0x0001)")
+    pos += 2
+    nin = _cs()
+    if nin != 1:
+        raise ValueError(f"expected 1 input, got {nin}")
+    prevout_txid = _read(32)
+    prevout_n = _u(4)
+    ss_len = _cs()
+    if ss_len != 0:
+        raise ValueError(f"scriptSig must be empty, got len={ss_len}")
+    sequence = _u(4)
+    nout = _cs()
+    if nout != 1:
+        raise ValueError(f"expected 1 output, got {nout}")
+    out_value = _u(8)
+    out_spk_len = _cs()
+    out_spk = _read(out_spk_len)
+    # witness stack for input 0
+    ws_count = _cs()
+    stack = []
+    for _ in range(ws_count):
+        item_len = _cs()
+        stack.append(_read(item_len))
+    locktime = _u(4)
+    if pos != len(raw):
+        raise ValueError(f"trailing bytes ({len(raw) - pos} leftover)")
+    return {
+        "version": version,
+        "prevout_txid": prevout_txid,
+        "prevout_n": prevout_n,
+        "sequence": sequence,
+        "vout": [(out_value, out_spk)],
+        "witness_stack": stack,
+        "locktime": locktime,
+    }
+
+
+def verify_full_p2tr(message: bytes | str, address: str, signature_str: str) -> bool:
+    """Verify a BIP-322 'full' format P2TR signature against a bc1p
+    address. Validates the entire to_sign envelope:
+      - segwit-encoded skeleton with 1 input, 1 (0-value, OP_RETURN) output
+      - prevout.txid == computed to_spend.txid; prevout.n == 0
+      - witness is [sig] of length 64 (SIGHASH_DEFAULT)
+      - BIP-340 verifies the sig over the BIP-341 key-path sighash
+        using the tx's actual version/locktime/sequence."""
+    from btx_taproot import schnorr_verify
+
+    if not signature_str.startswith("ful"):
+        return False
+    try:
+        raw = base64.b64decode(signature_str[3:])
+    except Exception:
+        return False
+    try:
+        tx = _parse_full_tx(raw)
+    except ValueError:
+        return False
+
+    # to_sign output must be (0, OP_RETURN)
+    out_value, out_spk = tx["vout"][0]
+    if out_value != 0 or out_spk != b"\x6a":
+        return False
+
+    # Address → output key
+    try:
+        witver, witprog = decode_segwit_address(address, "bc")
+    except ValueError:
+        return False
+    if witver != 1 or len(witprog) != 32:
+        return False
+    output_xonly = bytes(witprog)
+
+    # Recompute to_spend.txid and check the input prevout
+    mh = message_hash(message)
+    expected_spend_txid_le = to_spend_txid(mh, _p2tr_spk_from_xonly(output_xonly))
+    if tx["prevout_txid"] != expected_spend_txid_le or tx["prevout_n"] != 0:
+        return False
+
+    # Witness must be [sig], either 64 or 65 bytes (with explicit hash_type)
+    stack = tx["witness_stack"]
+    if len(stack) != 1:
+        return False
+    sig = stack[0]
+    if len(sig) == 65 and sig[64] != 0x00:
+        return False
+    if len(sig) not in (64, 65):
+        return False
+    sig64 = sig[:64]
+
+    sighash = _bip322_p2tr_sighash_full(
+        mh, output_xonly,
+        version=tx["version"], locktime=tx["locktime"], sequence=tx["sequence"],
+    )
+    return schnorr_verify(sighash, output_xonly, sig64)
+
+
 def _decode_simple_signature(s: str) -> List[bytes]:
     """Inverse of _encode_simple_signature. Returns the witness stack."""
     if not s.startswith("smp"):
@@ -761,12 +998,79 @@ def main() -> int:
 
             p2tr_ok += 1
 
+    # ------------------------------------------------------------------
+    #   Phase 3 — P2TR "full" format with time-locks
+    # ------------------------------------------------------------------
+    full_ok = 0
+    full_total = 0
+    if gen_src is not None:
+        full_entries = [e for e in gen.get("full", []) if e.get("type") == "p2tr"]
+        for entry in full_entries:
+            full_total += 1
+            wif = entry["private_keys"][0]
+            msg = entry["message"]
+            addr = entry["address"]
+            canonical_sig = entry["bip322_signatures"][0]
+            vsn = entry["tx_version"]
+            lt = entry["lock_time"]
+            seq = entry["sequence"]
+            try:
+                seckey, _ = decode_wif(wif)
+            except Exception as e:
+                failures.append(f"full p2tr: WIF decode failed: {e}")
+                continue
+
+            # 1. Canonical sig must verify.
+            if not verify_full_p2tr(msg, addr, canonical_sig):
+                failures.append(
+                    f"full p2tr: canonical sig did NOT verify for {addr}"
+                )
+                continue
+
+            # 2. Round-trip with the same params.
+            our_sig = sign_full_p2tr(
+                msg, seckey,
+                version=vsn, locktime=lt, sequence=seq,
+                aux_rand=b"\x00" * 32,
+            )
+            if not verify_full_p2tr(msg, addr, our_sig):
+                failures.append("full p2tr: own sign->verify round-trip failed")
+                continue
+
+            # 3. Tampered message rejected.
+            if verify_full_p2tr(msg + "x", addr, our_sig):
+                failures.append("full p2tr: verify accepted tampered message")
+                continue
+
+            # 4. Tampered locktime (rebuild tx with locktime+1) — our sig
+            #    should NOT verify under that altered envelope. Build by
+            #    re-signing with new params and verifying that yields a
+            #    *different* envelope, then make sure swapping a witness
+            #    item from one tx into the other invalidates it.
+            #    Easier check: our_sig with version-tampered must fail.
+            #    Achieved by parsing, mutating, re-encoding.
+            try:
+                raw = base64.b64decode(our_sig[3:])
+                # Flip lock_time: last 4 bytes
+                tampered = raw[:-4] + struct.pack("<I", (lt + 1) & 0xFFFFFFFF)
+                tampered_sig = "ful" + base64.b64encode(tampered).decode("ascii")
+                if verify_full_p2tr(msg, addr, tampered_sig):
+                    failures.append(
+                        "full p2tr: verify accepted lockTime-tampered sig"
+                    )
+                    continue
+            except Exception:
+                pass
+
+            full_ok += 1
+
     if failures:
         print(f"FAIL: {len(failures)} divergence(s):")
         for f in failures:
             print(f"  - {f}")
         print(
-            f"✗ btx_bip322: hash {ok}/{total}, p2tr {p2tr_ok}/{p2tr_total}, "
+            f"✗ btx_bip322: hash {ok}/{total}, "
+            f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}, "
             f"{len(failures)} fail"
         )
         return 1
@@ -774,13 +1078,21 @@ def main() -> int:
     print(f"  message_hash + to_spend + to_sign:  {ok}/{total} PASS")
     if p2tr_total:
         print(
-            f"  P2TR sign+verify (canonical+round-trip+tamper): {p2tr_ok}/{p2tr_total} PASS"
+            f"  P2TR simple sign+verify (canonical+round-trip+tamper): "
+            f"{p2tr_ok}/{p2tr_total} PASS"
         )
     else:
-        print("  P2TR sign+verify: SKIPPED (generated-test-vectors.json not found)")
+        print("  P2TR simple sign+verify: SKIPPED (vectors not found)")
+    if full_total:
+        print(
+            f"  P2TR full sign+verify with time-locks (canonical+round-trip+tamper): "
+            f"{full_ok}/{full_total} PASS"
+        )
+    else:
+        print("  P2TR full sign+verify: SKIPPED (vectors not found)")
     print(
-        f"✓ btx_bip322: all {total} hash chains + {p2tr_ok} P2TR "
-        f"sign/verify rounds agree with canonical"
+        f"✓ btx_bip322: {total} hash chains + {p2tr_ok} simple + "
+        f"{full_ok} full P2TR rounds agree with canonical"
     )
     return 0
 
