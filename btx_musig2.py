@@ -108,7 +108,23 @@ def _find_second_key(pubkeys_xonly):
 
 def key_agg(pubkeys_xonly):
     """
-    Aggregate N x-only pubkeys per BIP327 KeyAgg.
+    Aggregate N x-only pubkeys — BTX's x-only-input MuSig2-like variant.
+
+    ⚠ DIVERGENCE FROM CANONICAL BIP-327. This is *not* the
+    canonical BIP-327 KeyAgg from the deployed BIP. Cross-tested empirically
+    (see BTX-bip327-keyagg-finding-2026-06-03.md) and the output does not
+    match the official BIP-327 test vectors on any of the 4 valid cases.
+    The divergence has two causes:
+      (a) BIP-327 takes 33-byte compressed (parity-preserving) pubkeys;
+          this function takes 32-byte x-only pubkeys.
+      (b) BIP-327's L = TaggedHash("KeyAgg list", concat-of-33-byte-pubkeys);
+          this function uses concat-of-32-byte-pubkeys.
+    Practical impact: a pool of BIP-327-compliant signers (Ledger,
+    schnorr_fun, libsecp's musig module) CANNOT collaborate with BTX
+    pool sigs. BTX's pool_sign_demo is internally self-consistent
+    (sign-time KeyAgg uses this same function), so on-chain settlement
+    is unaffected; only EXTERNAL MuSig2 interop is blocked. See the
+    finding doc for details and the two paths to fix.
 
     Args:
         pubkeys_xonly: list of N 32-byte x-only pubkeys, in the
