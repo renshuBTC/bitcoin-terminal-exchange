@@ -119,6 +119,11 @@ SUB_TESTS = [
         "Bitcoin CoreX/secp256k1-zkp-reference/src/modules/schnorrsig_halfagg/tests_impl.h",
     ),
     (
+        "Schnorr + adaptor sigPoint vs dlcspecs canonical (third oracle)",
+        "btx_xtest_vs_dlcspecs.py",
+        "Bitcoin CoreX/dlcspecs-reference/test/dlc_schnorr_test.json",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
