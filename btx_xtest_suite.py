@@ -114,6 +114,11 @@ SUB_TESTS = [
         None,
     ),
     (
+        "Half-agg vs secp256k1-zkp hacspec vectors",
+        "btx_xtest_vs_zkp_halfagg.py",
+        "Bitcoin CoreX/secp256k1-zkp-reference/src/modules/schnorrsig_halfagg/tests_impl.h",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
