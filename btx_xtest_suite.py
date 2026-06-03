@@ -134,6 +134,11 @@ SUB_TESTS = [
         "Bitcoin CoreX/dlcspecs-reference/test/dlc_hash_test.json",
     ),
     (
+        "BIP-340 vs libsecp256k1 via python-bitcointx (implementation independence)",
+        "btx_xtest_vs_python_bitcointx.py",
+        None,  # graceful SKIP if neither python-bitcointx nor libsecp256k1 present
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
