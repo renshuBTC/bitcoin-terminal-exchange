@@ -1115,8 +1115,6 @@ def main() -> int:
             print(f"  - {f}")
         print(
             f"✗ btx_bip322: hash {ok}/{total}, "
-        print(
-            f"✗ btx_bip322: hash {ok}/{total}, "
             f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}"
         )
         return 1
