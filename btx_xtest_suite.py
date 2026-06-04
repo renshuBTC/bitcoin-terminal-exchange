@@ -292,14 +292,47 @@ def main():
     argv = sys.argv[1:]
     quiet = "--quiet" in argv
     verbose = "--verbose" in argv
+    parallel = "--parallel" in argv  # use --parallel to enable concurrent execution
 
     results = []
-    for name, script, requires in SUB_TESTS:
+    if not parallel:
+        # Sequential execution (default — predictable, no subprocess contention)
+        for name, script, requires in SUB_TESTS:
+            if not quiet:
+                print(f"[ running ] {name}", flush=True)
+            status, elapsed, summary = run_one(name, script, requires, verbose=verbose)
+            results.append((name, status, elapsed, summary))
+            if not quiet:
+                marker = {"PASS": "OK", "FAIL": "FAIL", "MISSING": "MISS",
+                          "SKIPPED": "SKIP", "ERROR": "ERR"}[status]
+                print(f"[{marker:>5}] {name}  ({elapsed:.2f}s)  {summary[:80]}", flush=True)
+    else:
+        # Parallel execution (opt-in via --parallel — full 28-test
+        # suite completes in ~15s vs ~70s sequential, fitting under
+        # standard host runner CI budgets. NOTE: requires
+        # enough memory + file descriptors to spawn ~16 concurrent
+        # subprocess workers including Node and Rust binaries; on a
+        # constrained sandbox prefer the default serial path.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         if not quiet:
-            print(f"[ running ] {name}", flush=True)
-        status, elapsed, summary = run_one(name, script, requires, verbose=verbose)
-        results.append((name, status, elapsed, summary))
-        if not quiet:
+            print(f"[ parallel ] running {len(SUB_TESTS)} sub-tests concurrently...", flush=True)
+        # Preserve declaration order in the output by indexing.
+        ordered: list = [None] * len(SUB_TESTS)
+        with ThreadPoolExecutor(max_workers=min(16, len(SUB_TESTS))) as ex:
+            futures = {
+                ex.submit(run_one, name, script, requires, verbose): i
+                for i, (name, script, requires) in enumerate(SUB_TESTS)
+            }
+            for fut in as_completed(futures):
+                i = futures[fut]
+                name, script, _ = SUB_TESTS[i]
+                status, elapsed, summary = fut.result()
+                ordered[i] = (name, status, elapsed, summary)
+        results = ordered
+
+    # In serial mode we already printed per-item; only summarize for parallel.
+    if not quiet and parallel:
+        for name, status, elapsed, summary in results:
             marker = {
                 "PASS": "✓",
                 "FAIL": "✗",
@@ -322,15 +355,10 @@ def main():
         print(f"  failed:  {fail_count}/{total}")
         print(f"  skipped: {skip_count}/{total}  (reference repos not cloned locally)")
 
-    # Final one-liner is the verdict
     if fail_count == 0:
-        verdict = (
-            f"✓ btx_xtest_suite: {pass_count} PASS, {skip_count} skipped, 0 FAIL"
-        )
+        verdict = f"✓ btx_xtest_suite: {pass_count} PASS, {skip_count} skipped, 0 FAIL"
     else:
-        verdict = (
-            f"✗ btx_xtest_suite: {pass_count} PASS, {fail_count} FAIL, {skip_count} skipped"
-        )
+        verdict = f"✗ btx_xtest_suite: {pass_count} PASS, {fail_count} FAIL, {skip_count} skipped"
     print(verdict)
 
     return 0 if fail_count == 0 else 1
