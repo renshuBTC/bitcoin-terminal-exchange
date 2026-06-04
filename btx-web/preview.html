@@ -367,6 +367,67 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
     });
   })();
 </script>
+<script>
+  // Publish button BIP-322 round-trip in the static preview.
+  (function(){
+    const actBtns = document.querySelectorAll('button.act');
+    // The Publish action is the first .act button in the panel
+    if (!actBtns.length) return;
+    const pubBtn = actBtns[0];
+    // Collect input fields in order — UTXO, Price, Stablecoin, Amount, Carrier
+    function snapshot(){
+      const inputs = document.querySelectorAll('main .card:nth-of-type(3) input, main .card:nth-of-type(3) select');
+      const v = (el) => el ? (el.value || '') : '';
+      return {
+        kind: 'btx2.order.publish',
+        version: 1,
+        rune: v(inputs[2]),
+        amount: v(inputs[3]),
+        price_btc: v(inputs[1]),
+        carrier: v(inputs[4]),
+        offer_utxo: v(inputs[0]) || '(unspecified)',
+        ts: new Date().toISOString(),
+      };
+    }
+    // Insert result strip beneath the button
+    let strip = pubBtn.parentElement.querySelector('.publish-result');
+    if (!strip){
+      strip = document.createElement('div');
+      strip.className = 'publish-result';
+      strip.style.cssText = 'font-size:11px; margin-top:10px; white-space:pre-wrap; word-break:break-all; padding:7px 9px; border-radius:2px; border:1px solid; font-family:var(--font-mono); display:none';
+      pubBtn.parentElement.insertBefore(strip, pubBtn.nextSibling);
+    }
+    function show(ok, text){
+      strip.style.display = 'block';
+      strip.style.color = ok ? 'var(--green)' : 'var(--red)';
+      strip.style.borderColor = ok ? '#2c5e57' : '#5e2e34';
+      strip.style.background = ok ? '#0c1816' : '#1a0e0e';
+      strip.textContent = text;
+    }
+    pubBtn.addEventListener('click', async () => {
+      const u = window.unisat;
+      if (!u){ show(false, 'UniSat extension not installed. Install from https://unisat.io/'); return; }
+      try {
+        pubBtn.disabled = true;
+        const orig = pubBtn.textContent;
+        pubBtn.textContent = 'signing in wallet…';
+        // Make sure we're connected
+        const accounts = await u.requestAccounts();
+        if (!accounts || !accounts.length) throw new Error('no account');
+        const msg = JSON.stringify(snapshot(), null, 2);
+        const sig = await u.signMessage(msg, 'bip322-simple');
+        show(true, 'BIP-322 attestation OK\nsignature: ' + sig.slice(0,24) + '…' + sig.slice(-12));
+        pubBtn.textContent = orig || 'Maker-sign & publish';
+      } catch(e){
+        show(false, e && e.message ? e.message : 'sign failed');
+        pubBtn.textContent = 'Maker-sign & publish';
+      } finally {
+        pubBtn.disabled = false;
+      }
+    });
+  })();
+</script>
+
 
 </body>
 </html>

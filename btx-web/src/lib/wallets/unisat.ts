@@ -29,6 +29,10 @@ type UniSatProvider = {
   getNetwork(): Promise<'livenet' | 'testnet' | 'signet'>;
   switchNetwork(network: 'livenet' | 'testnet' | 'signet'): Promise<void>;
   getBalance(): Promise<{ confirmed: number; unconfirmed: number; total: number }>;
+  signMessage(
+    message: string,
+    type?: 'ecdsa' | 'bip322-simple',
+  ): Promise<string>;
   signPsbt(
     psbtHex: string,
     options?: {
@@ -107,6 +111,14 @@ export const unisatWallet: BitcoinWallet = {
    */
   async getUtxos(): Promise<Utxo[]> {
     return [];
+  },
+
+  async signMessage(message: string, type: 'bip322' | 'ecdsa' = 'bip322'): Promise<string> {
+    const p = getProvider();
+    if (!p) throw new Error('UniSat not available');
+    // UniSat's signature type literal is 'bip322-simple' for BIP-322.
+    const t = type === 'bip322' ? 'bip322-simple' : 'ecdsa';
+    return p.signMessage(message, t);
   },
 
   async signPsbt(
