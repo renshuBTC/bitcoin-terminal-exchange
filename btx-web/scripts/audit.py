@@ -340,6 +340,43 @@ def _scan_brackets(src: str) -> tuple[int, int, int]:
     return b, p, sq
 
 
+# -------- audit 4: tsc --noEmit (when available) --------
+#
+# Catches type errors that audits 1-3 can't see (wrong argument types,
+# missing required props, mistaken Promise vs T, undefined access).
+# Skipped gracefully when node_modules isn't present — both so the
+# pre-commit watcher's fresh shell doesn't require a slow `npm install`
+# and so CI can decide whether to gate on it independently.
+
+def audit_tsc(repo_root: str) -> tuple[bool, str]:
+    """Returns (skipped, output). skipped=True means tsc wasn't run
+    (no node_modules / no tsc binary) and the result should not fail
+    the overall audit."""
+    tsc = os.path.join(repo_root, 'node_modules', 'typescript', 'bin', 'tsc')
+    if not os.path.isfile(tsc):
+        return True, "  SKIP (no node_modules/typescript/bin/tsc — run `npm install` to enable)"
+    try:
+        import subprocess
+        r = subprocess.run(
+            ['node', tsc, '--noEmit', '--pretty', 'false'],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort gate, surface anything
+        return True, f"  SKIP (tsc spawn failed: {e})"
+    if r.returncode == 0:
+        return False, "  OK"
+    body = (r.stdout or '') + (r.stderr or '')
+    # Trim very long output so the pre-commit hook isn't a wall of text;
+    # full content still lives in the user's terminal scrollback.
+    lines = body.splitlines()
+    if len(lines) > 30:
+        body = '\n'.join(lines[:30] + [f"  … {len(lines) - 30} more lines …"])
+    return False, body
+
+
 # -------- main --------
 
 def main() -> int:
@@ -351,7 +388,7 @@ def main() -> int:
     fail = 0
 
     tokens = parse_tailwind_color_tokens('tailwind.config.ts')
-    print(f"== audit 1/3: Tailwind color classes ({len(tokens)} declared tokens) ==")
+    print(f"== audit 1/4: Tailwind color classes ({len(tokens)} declared tokens) ==")
     tw_issues = audit_tailwind_classes('src', tokens)
     if not tw_issues:
         print("  OK")
@@ -362,7 +399,7 @@ def main() -> int:
 
     print()
     idx = build_export_index('src')
-    print(f"== audit 2/3: named imports vs exports across {len(idx)} files ==")
+    print(f"== audit 2/4: named imports vs exports across {len(idx)} files ==")
     imp_issues = audit_imports('src', idx)
     if not imp_issues:
         print("  OK")
@@ -374,7 +411,7 @@ def main() -> int:
             print(f"        actual exports: {', '.join(exports) or '(none)'}")
 
     print()
-    print(f"== audit 3/3: bracket balance ==")
+    print(f"== audit 3/4: bracket balance ==")
     br_issues = audit_bracket_balance('src')
     if not br_issues:
         print("  OK")
@@ -382,6 +419,18 @@ def main() -> int:
         fail = 1
         for fp, b, p, sq in br_issues:
             print(f"  FAIL  {fp}  net {{}}={b:+d}  ()={p:+d}  []={sq:+d}")
+
+    print()
+    print(f"== audit 4/4: tsc --noEmit (TypeScript type-check) ==")
+    skipped, tsc_out = audit_tsc(repo_root)
+    if skipped or tsc_out.strip() == 'OK':
+        print(tsc_out)
+    else:
+        # tsc ran and produced errors.
+        fail = 1
+        print("  FAIL")
+        for line in tsc_out.splitlines():
+            print(f"  {line}")
 
     print()
     print("== summary: pass ==" if fail == 0 else "== summary: FAIL ==")
