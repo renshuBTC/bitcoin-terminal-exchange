@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-panel text-fg-1 font-sans antialiased;
+}
+
+a {
+  @apply text-btc-orange hover:underline;
+}
