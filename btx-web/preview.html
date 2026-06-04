@@ -1,343 +1,297 @@
 <!doctype html>
-<html lang="en" class="dark" style="color-scheme: dark">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BTX — fully on-chain Bitcoin exchange</title>
-    <meta
-      name="description"
-      content="A Bitcoin DEX. Orders live on Bitcoin. Your keys never leave your wallet. No custody, no native token, no off-chain order book."
-    />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              'btc-orange': '#f7931a',
-              panel: '#0f1218',
-              'panel-2': '#161b24',
-              'border-strong': '#2a3140',
-              'fg-1': '#e7ebf3',
-              'fg-2': '#9aa3b2',
-              'green-up': '#26a69a',
-              'red-down': '#ef5350',
-            },
-          },
-        },
-      };
-    </script>
-    <style>
-      body {
-        background: #0f1218;
-        color: #e7ebf3;
-        font-family:
-          ui-sans-serif,
-          system-ui,
-          -apple-system,
-          'Segoe UI',
-          sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-      .mono {
-        font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, monospace;
-      }
-    </style>
-  </head>
-  <body class="min-h-screen flex flex-col">
-    <!-- header -->
-    <header class="border-b border-border-strong bg-panel-2">
-      <div
-        class="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between"
-      >
-        <a
-          href="#"
-          class="mono text-lg font-bold no-underline"
-          style="text-decoration: none; color: #e7ebf3"
-        >
-          <span style="color: #f7931a">BTX</span>
-          <span class="text-fg-2 text-xs ml-2"
-            >fully on-chain Bitcoin exchange</span
-          >
-        </a>
-        <nav class="text-sm flex gap-4">
-          <a href="#" class="hover:underline" style="color: #f7931a"
-            >Trade</a
-          >
-          <a
-            href="#transparency"
-            class="hover:underline"
-            style="color: #f7931a"
-            >Transparency</a
-          >
-          <a
-            href="https://github.com/renshuBTC/bitcoin-terminal-exchange"
-            target="_blank"
-            rel="noreferrer"
-            class="hover:underline"
-            style="color: #f7931a"
-            >Source</a
-          >
-        </nav>
-      </div>
-    </header>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTX — chain-reconstructed order book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap">
+<style>
+/* ===================================================================
+   BTX preview — inlined design tokens from assets/btx.css
+   Identical palette + typography + components to the installed app
+   so this preview matches what a user sees after running btxd locally.
+   =================================================================== */
+:root{
+  --bg:#000;
+  --fg:#d4d4d4;
+  --fg-bright:#fff;
+  --muted:#888;
+  --dim:#666;
+  --border:#2a2a2a;
+  --border-soft:#1f1f1f;
+  --hover:#1a1a1a;
+  --panel:#0d0d0d;
+  --menu:#111;
+  --line-strong:#555;
+  --orange:#ff8c00;
+  --orange-bright:#ffaa33;
+  --red:#f0616d;
+  --green:#26a69a;
+  --amber:#e6b34a;
+  --font-mono:'Source Code Pro', Consolas, Menlo, monospace;
+  --font-display:'Roboto Condensed', system-ui, sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+::selection{background:var(--orange);color:#000}
+html,body{height:100%}
+html{font-family:var(--font-mono)}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--font-mono); font-size:13px; line-height:1.45;
+  font-variant-numeric:tabular-nums;
+  display:flex; flex-direction:column; min-height:100vh;
+}
+a{color:var(--fg); text-decoration:none}
+a:hover{color:var(--fg-bright); text-decoration:underline; text-underline-offset:2px; text-decoration-color:var(--orange)}
+.mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+.display{font-family:var(--font-display); font-weight:700; letter-spacing:.5px; text-transform:uppercase}
+.muted{color:var(--muted)} .dim{color:var(--dim)}
+.g{color:var(--green)} .r{color:var(--red)}
 
-    <!-- main -->
-    <main class="flex-1">
-      <div class="mx-auto max-w-7xl px-4 py-6 space-y-6">
-        <!-- Top summary -->
-        <section
-          class="rounded-lg bg-panel-2 border border-border-strong p-4"
-        >
-          <h1 class="text-2xl font-semibold mb-1">BTX orderbook</h1>
-          <p class="text-fg-2 text-sm">
-            Open orders reconstructed from Bitcoin. No relay, no
-            server-side book — the data here lives on-chain.
-          </p>
-          <div
-            class="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm mono"
-          >
-            <div class="bg-panel rounded p-2 border border-border-strong">
-              <div class="text-fg-2 text-xs uppercase tracking-wide">
-                open
-              </div>
-              <div class="text-fg-1 text-lg">0</div>
-            </div>
-            <div class="bg-panel rounded p-2 border border-border-strong">
-              <div class="text-fg-2 text-xs uppercase tracking-wide">
-                conditional
-              </div>
-              <div class="text-fg-1 text-lg">0</div>
-            </div>
-            <div class="bg-panel rounded p-2 border border-border-strong">
-              <div class="text-fg-2 text-xs uppercase tracking-wide">
-                filled
-              </div>
-              <div class="text-fg-1 text-lg">0</div>
-            </div>
-            <div class="bg-panel rounded p-2 border border-border-strong">
-              <div class="text-fg-2 text-xs uppercase tracking-wide">
-                cancelled
-              </div>
-              <div class="text-fg-1 text-lg">0</div>
-            </div>
-            <div class="bg-panel rounded p-2 border border-border-strong">
-              <div class="text-fg-2 text-xs uppercase tracking-wide">
-                expired
-              </div>
-              <div class="text-fg-1 text-lg">0</div>
-            </div>
-          </div>
-        </section>
+/* ===== TOP NAV (TradingView-style minimal toolbar) ===== */
+.bt-nav{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px; background:var(--bg);
+  border-bottom:1px solid var(--border); flex-wrap:wrap;
+  position:sticky; top:0; z-index:5;
+}
+.bt-logo{
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--font-display); font-weight:700; font-size:15px;
+  color:var(--fg-bright); text-transform:uppercase; letter-spacing:.8px;
+  padding:0 10px 0 2px;
+}
+.bt-logo::before{
+  content:""; display:inline-block; width:18px; height:18px;
+  background:var(--orange); border-radius:3px;
+  background-image:linear-gradient(135deg, var(--orange) 60%, var(--orange-bright) 100%);
+}
+.bt-logo b{color:var(--orange); font-weight:700}
+.bt-navlinks{display:flex; gap:2px; margin-left:6px; flex-wrap:wrap}
+.bt-navlinks a{
+  color:var(--fg); padding:6px 10px; font-size:12px;
+  border-radius:3px; text-transform:uppercase; letter-spacing:.5px;
+  text-decoration:none;
+  transition:background-color .08s ease, color .08s ease;
+}
+.bt-navlinks a:hover{background:var(--hover); color:var(--fg-bright); text-decoration:none}
+.bt-navlinks a.on{background:var(--hover); color:var(--fg-bright)}
+.bt-navright{margin-left:auto; display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.bt-pill{
+  display:inline-flex; align-items:center;
+  background:var(--hover); color:var(--fg); border:1px solid var(--line-strong);
+  border-radius:2px; height:28px; padding:0 10px;
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+  line-height:26px; box-sizing:border-box;
+}
+.bt-pill.ok{color:var(--green); border-color:#2c5e57}
+.bt-pill.warn{color:var(--orange); border-color:#7a4b13}
+.bt-pill.bad{color:var(--red); border-color:#5e2e34}
+.bt-btn-orange{
+  background:var(--orange); color:#000;
+  border:1px solid var(--orange); border-radius:2px;
+  height:28px; padding:0 16px;
+  font-family:var(--font-mono); font-size:12px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.6px;
+  line-height:26px; cursor:pointer;
+}
+.bt-btn-orange:hover{background:var(--orange-bright); border-color:var(--orange-bright)}
 
-        <!-- empty orderbook -->
-        <section
-          class="rounded-lg bg-panel-2 border border-border-strong p-8 text-center"
-          style="color: #9aa3b2"
-        >
-          <div class="text-fg-1 text-lg font-semibold mb-2">
-            No open orders
-          </div>
-          <div class="text-sm">
-            The orderbook is empty right now. This is expected on a
-            freshly-deployed indexer or signet — until a maker publishes a
-            BTX2 envelope, the chain has nothing to display.
-          </div>
-        </section>
+/* ===== STATUS BAR (very bottom) ===== */
+.bt-statusbar{
+  display:flex; align-items:center; gap:18px;
+  padding:5px 12px; background:var(--bg);
+  border-top:1px solid var(--border);
+  font-size:12px; color:var(--muted);
+  flex-wrap:wrap;
+}
+.bt-statusbar .live{display:flex; align-items:center; gap:6px; color:var(--green)}
+.bt-statusbar .live .dot{width:7px; height:7px; border-radius:50%; background:var(--green); display:inline-block}
+.bt-statusbar .live .dot.down{background:var(--red)}
+.bt-statusbar .right{margin-left:auto; display:flex; gap:14px; flex-wrap:wrap}
+.bt-statusbar .right a{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px}
+.bt-statusbar .right a:hover{color:var(--fg-bright); text-decoration:none}
 
-        <!-- honesty box -->
-        <section
-          class="rounded-lg bg-panel-2 border border-border-strong p-4 text-sm space-y-2"
-          style="color: #9aa3b2"
-        >
-          <h2 class="text-fg-1 font-semibold">Honest about the MVP</h2>
-          <p>
-            This is a scaffold. The orderbook fetch is wired
-            (<span class="mono text-fg-1">/api/v1/btx2/orders</span>);
-            the buy / sell flows aren&rsquo;t wired yet. Per the build plan
-            in
-            <span class="mono text-fg-1"
-              >BTX-frontend-architecture-2026-06-04.md</span
-            >: wallet integration is week 7&ndash;8, BUY flow week
-            9&ndash;10, SELL flow week 11.
-          </p>
-          <p>
-            What you see here is the Next.js page rendered as static HTML
-            for preview purposes &mdash; the real app needs
-            <span class="mono text-fg-1">npm install &amp;&amp; npm run dev</span>
-            in
-            <span class="mono text-fg-1"
-              >bitcoin-terminal-exchange/btx-web/</span
-            >.
-          </p>
-        </section>
+/* ===== HEADER ===== */
+header.page{
+  padding:16px 20px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+}
+h1{font-family:var(--font-display); font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--fg-bright); font-size:18px; margin:0}
+h1 .tag{color:var(--orange)}
+.sub{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px; margin-top:2px}
+header.page .controls{margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+header.page input[type=text]{
+  background:var(--bg); border:1px solid var(--border); color:var(--fg);
+  border-radius:2px; padding:6px 9px; font-family:var(--font-mono); font-size:12px;
+  width:280px;
+}
+header.page input[type=text]:focus{outline:none; border-color:var(--orange)}
+header.page label.auto{color:var(--muted); font-size:11px; display:flex; align-items:center; gap:5px; cursor:pointer; text-transform:uppercase; letter-spacing:.5px}
+header.page .btn-sec{
+  background:var(--panel); border:1px solid var(--border); color:var(--fg);
+  border-radius:2px; padding:6px 12px; cursor:pointer; font-family:var(--font-mono);
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+}
+header.page .btn-sec:hover{border-color:var(--orange)}
+header.page a.create{
+  color:var(--orange); font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+  text-decoration:none;
+}
+header.page a.create:hover{color:var(--orange-bright); text-decoration:underline}
 
-        <!-- transparency anchor -->
-        <section id="transparency" class="space-y-6 mt-8">
-          <header>
-            <h1 class="text-3xl font-semibold mb-2">Transparency</h1>
-            <p class="text-fg-2">
-              What you&rsquo;re trusting when you use this site, in plain
-              English.
-            </p>
-          </header>
+/* ===== MAIN ===== */
+main{padding:18px 20px; max-width:1200px; flex:1; width:100%}
+.status{font-size:11px; color:var(--muted); margin-bottom:14px; min-height:16px; text-transform:uppercase; letter-spacing:.5px}
+.status.err{color:var(--red)}
 
-          <div class="space-y-3">
-            <h2 class="text-xl font-semibold">What you are trusting</h2>
-            <ul class="list-disc list-inside space-y-2 text-fg-2">
-              <li>
-                The operator of
-                <span class="mono text-fg-1">api.btx.exchange</span> (this
-                indexer + API) to report honest orderbook data.
-              </li>
-              <li>
-                The same operator to forward your signed transaction to
-                Bitcoin&rsquo;s mempool unmodified.
-              </li>
-            </ul>
-            <p class="text-sm text-fg-2 mt-2">
-              That&rsquo;s it. The operator never sees your private keys,
-              never holds your funds, and cannot move your money.
-            </p>
-          </div>
+/* ===== COUNT CARDS ===== */
+.cards{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px}
+.card{
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:2px; padding:12px 16px; min-width:120px; flex:1;
+}
+.card .n{font-size:22px; font-weight:600; color:var(--fg-bright); font-family:var(--font-mono); font-variant-numeric:tabular-nums; line-height:1.2}
+.card .l{color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.6px; margin-top:4px}
 
-          <div class="space-y-3">
-            <h2 class="text-xl font-semibold">
-              What you are NOT trusting
-            </h2>
-            <ul class="list-disc list-inside space-y-2 text-fg-2">
-              <li>
-                <span class="text-fg-1">Your keys stay in your wallet.</span>
-                The website asks your wallet to sign; it never sees the
-                key.
-              </li>
-              <li>
-                <span class="text-fg-1">Trades land on Bitcoin.</span> Your
-                signed transaction goes into Bitcoin&rsquo;s mempool, not
-                into any BTX-controlled ledger.
-              </li>
-              <li>
-                <span class="text-fg-1">
-                  The chain is the source of truth.</span
-                >
-                Anyone can independently verify any order by running their
-                own indexer.
-              </li>
-              <li>
-                <span class="text-fg-1">No custody, ever.</span> The BTX
-                operator cannot freeze, seize, or move your funds &mdash;
-                they don&rsquo;t have access.
-              </li>
-            </ul>
-          </div>
+/* ===== SECTION HEADINGS ===== */
+h2{
+  font-family:var(--font-mono); font-size:11px; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.7px; margin:22px 0 8px;
+  font-weight:500;
+}
 
-          <div class="space-y-3">
-            <h2 class="text-xl font-semibold">Cross-verification</h2>
-            <p class="text-fg-2">
-              BTX&rsquo;s indexer produces a deterministic state-root
-              hash at each Bitcoin block. Two honest indexers running
-              against the same Bitcoin chain must produce the same hash. If
-              they disagree, at least one is lying.
-            </p>
-            <div
-              class="rounded bg-panel-2 border border-border-strong p-3 mono text-sm"
-            >
-              <div class="text-fg-2 text-xs uppercase">
-                current state root
-              </div>
-              <div class="break-all">
-                0000000000000000000000000000000000000000000000000000000000000000
-              </div>
-              <div class="text-fg-2 text-xs mt-1">
-                at block 0 (preview &mdash; live value comes from the
-                running brk_server)
-              </div>
-            </div>
-          </div>
+/* ===== TABLES ===== */
+table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--border); border-radius:2px; overflow:hidden}
+th{
+  text-align:left; padding:9px 12px; border-bottom:1px solid var(--border-soft);
+  color:var(--muted); font-weight:500; font-size:10px;
+  text-transform:uppercase; letter-spacing:.6px; font-family:var(--font-mono);
+}
+td{
+  padding:9px 12px; border-bottom:1px solid var(--border-soft);
+  font-family:var(--font-mono); color:var(--fg); font-size:12px;
+}
+td.num,th.num{text-align:right}
+tr:last-child td{border-bottom:none}
+.empty{padding:28px; text-align:center; color:var(--dim); font-size:12px; background:var(--panel); border:1px solid var(--border); border-radius:2px}
 
-          <div class="space-y-3">
-            <h2 class="text-xl font-semibold">
-              Compared to a regular exchange
-            </h2>
-            <div
-              class="overflow-x-auto rounded border border-border-strong"
-            >
-              <table class="w-full text-sm">
-                <thead class="bg-panel-2 text-fg-2 text-xs uppercase">
-                  <tr>
-                    <th class="text-left px-3 py-2">Capability</th>
-                    <th class="text-left px-3 py-2">Regular exchange</th>
-                    <th class="text-left px-3 py-2">BTX</th>
-                  </tr>
-                </thead>
-                <tbody class="text-fg-1">
-                  <tr class="border-t border-border-strong">
-                    <td class="px-3 py-2">Holds your keys</td>
-                    <td class="px-3 py-2" style="color: #ef5350">yes</td>
-                    <td class="px-3 py-2" style="color: #26a69a">no</td>
-                  </tr>
-                  <tr class="border-t border-border-strong">
-                    <td class="px-3 py-2">Can freeze your account</td>
-                    <td class="px-3 py-2" style="color: #ef5350">yes</td>
-                    <td class="px-3 py-2" style="color: #26a69a">no</td>
-                  </tr>
-                  <tr class="border-t border-border-strong">
-                    <td class="px-3 py-2">Can move your funds</td>
-                    <td class="px-3 py-2" style="color: #ef5350">yes</td>
-                    <td class="px-3 py-2" style="color: #26a69a">no</td>
-                  </tr>
-                  <tr class="border-t border-border-strong">
-                    <td class="px-3 py-2">Required to participate</td>
-                    <td class="px-3 py-2" style="color: #ef5350">
-                      account / KYC
-                    </td>
-                    <td class="px-3 py-2" style="color: #26a69a">
-                      a Bitcoin wallet
-                    </td>
-                  </tr>
-                  <tr class="border-t border-border-strong">
-                    <td class="px-3 py-2">Operates without us</td>
-                    <td class="px-3 py-2" style="color: #ef5350">no</td>
-                    <td class="px-3 py-2" style="color: #26a69a">
-                      yes &mdash; anyone can run another frontend
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+/* ===== TRANSPARENCY SECTION ===== */
+.transparency h3{
+  font-family:var(--font-display); font-weight:700; letter-spacing:.5px;
+  text-transform:uppercase; color:var(--fg-bright); font-size:14px; margin:24px 0 10px;
+}
+.transparency p{margin-bottom:10px; color:var(--fg)}
+.transparency ul{list-style:none; padding-left:0; margin-bottom:10px}
+.transparency li{padding:5px 0 5px 18px; position:relative; color:var(--fg)}
+.transparency li::before{content:"›"; position:absolute; left:0; color:var(--orange); font-weight:700}
+.transparency .bright{color:var(--fg-bright); font-weight:500}
+.transparency code{background:var(--hover); border:1px solid var(--border-soft); border-radius:2px; padding:1px 6px; font-size:12px}
+.root-box{
+  background:var(--bg); border:1px solid var(--border); border-radius:2px;
+  padding:10px 14px; margin-top:10px;
+}
+.root-box .label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px}
+.root-box .val{font-family:var(--font-mono); font-size:12px; color:var(--fg-bright); word-break:break-all; margin-top:4px}
+.root-box .at{font-size:11px; color:var(--dim); margin-top:4px}
 
-    <!-- trust footer -->
-    <footer
-      class="border-t border-border-strong bg-panel-2 text-xs"
-      style="color: #9aa3b2"
-    >
-      <div
-        class="mx-auto max-w-7xl px-4 py-2 flex flex-wrap gap-x-4 gap-y-1 items-center"
-      >
-        <span class="inline-flex items-center gap-1" style="color: #ef5350">
-          <span
-            class="w-2 h-2 rounded-full"
-            style="background: currentColor; display: inline-block"
-          ></span>
-          api: not connected (preview)
-        </span>
-        <span>block: &mdash;</span>
-        <span class="mono">state root: &mdash;</span>
-        <span class="ml-auto flex gap-3">
-          <a href="#transparency" style="color: #f7931a">verify &rarr;</a>
-          <a
-            href="https://github.com/renshuBTC/brk-btx"
-            target="_blank"
-            rel="noreferrer"
-            style="color: #f7931a"
-            >run your own &rarr;</a
-          >
-        </span>
-      </div>
-    </footer>
-  </body>
-</html>
+/* ===== FOOTER ===== */
+footer.docs{
+  padding:18px 20px; color:var(--muted); font-size:11px;
+  border-top:1px solid var(--border); max-width:1200px;
+}
+footer.docs code{font-family:var(--font-mono); background:var(--hover); padding:1px 6px; border-radius:2px; border:1px solid var(--border-soft)}
+</style>
+</head>
+<body>
+
+<div class="bt-nav">
+  <span class="bt-logo">BT<b>X</b></span>
+  <div class="bt-navlinks">
+    <a href="#">Trade</a>
+    <a href="#" class="on">Book</a>
+    <a href="#">Trades</a>
+    <a href="#">Create</a>
+    <a href="#">Attest</a>
+    <a href="#">Wallet</a>
+    <a href="#">Activity</a>
+    <a href="https://github.com/renshuBTC" target="_blank" rel="noopener">Docs</a>
+  </div>
+  <div class="bt-navright">
+    <span class="bt-pill warn">preview &middot; not connected</span>
+    <button class="bt-btn-orange">Connect Wallet</button>
+  </div>
+</div>
+
+<header class="page">
+  <div>
+    <h1>BT<span class="tag">X</span> order book</h1>
+    <div class="sub">chain-reconstructed &middot; no relay, no server-side state &middot; served by your own node</div>
+  </div>
+  <div class="controls">
+    <a class="create" href="#">+ create order</a>
+    <input id="api" type="text" value="http://127.0.0.1:3140" title="brk_cli API base URL">
+    <button class="btn-sec">Refresh</button>
+    <label class="auto"><input type="checkbox"> auto (15s)</label>
+  </div>
+</header>
+
+<main>
+  <div class="status">Preview &mdash; brk_cli not connected. The values below are placeholders showing the live layout.</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="n">0</div>
+      <div class="l">Open</div>
+    </div>
+    <div class="card">
+      <div class="n">0</div>
+      <div class="l">Conditional</div>
+    </div>
+    <div class="card">
+      <div class="n">0</div>
+      <div class="l">Filled (24h)</div>
+    </div>
+    <div class="card">
+      <div class="n">0</div>
+      <div class="l">Cancelled</div>
+    </div>
+    <div class="card">
+      <div class="n">0</div>
+      <div class="l">Expired</div>
+    </div>
+  </div>
+
+  <h2>Open orders</h2>
+  <div class="empty">No open orders. Publish one on-chain and your node will reconstruct it here.</div>
+
+  <h2>Order groups (partial-fill lots)</h2>
+  <div class="empty">No multi-lot groups.</div>
+
+  <h2>Recent fills &amp; cancels</h2>
+  <div class="empty">No filled or cancelled orders yet.</div>
+
+  <h2>Recent atomic swaps (detected on-chain)</h2>
+  <div class="empty">No on-chain swaps detected yet.</div>
+
+  <div class="transparency">
+    <h2>Transparency</h2>
+
+    <h3>What you are trusting</h3>
+    <ul>
+      <li>The operator of <code>api.btx.exchange</code> to report honest orderbook data.</li>
+      <li>The same operator to forward your signed transaction to Bitcoin&rsquo;s mempool unmodified.</li>
+    </ul>
+    <p class="muted">That&rsquo;s it. The operator never sees your private keys, never holds your funds, and cannot move your money.</p>
+
+    <h3>What you are NOT trusting</h3>
+    <ul>
+      <li><span class="bright">Your keys stay in your wallet.</span> The website asks your wallet to sign; it never sees the key.</li>
+      <li><span class="bright">Trades land on Bitcoin.</span> Your signed transaction goes into Bitcoin&rsquo;s mempool, not into any BTX-controlled ledger.</li>
+      <li><span class="bright">The chain is the source of truth.</span> Anyone can independently verify any order by running their own indexer.</li>
+      <li><span class="bright">No custody, ever.</span> The BTX operator cannot freeze, seize, or move your funds &mdash; they don&rsquo;t have access.</li>
+    </ul>
+
+    <h3>Cross-verification</h3>
+    <p>BTX&rsquo;s indexer produces a deterministic state-root hash at each Bitcoin bloc
