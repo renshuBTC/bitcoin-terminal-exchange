@@ -23,6 +23,7 @@ import {
   unisatWallet,
 } from '@/lib/wallets/unisat';
 import { leatherInstalled, leatherWallet } from '@/lib/wallets/leather';
+import { okxInstalled, okxWallet } from '@/lib/wallets/okx';
 import { xverseInstalled, xverseWallet } from '@/lib/wallets/xverse';
 
 interface WalletState {
@@ -30,7 +31,7 @@ interface WalletState {
   balanceSats: number | null;
   connecting: boolean;
   error: string | null;
-  connect: (adapter?: 'unisat' | 'xverse' | 'leather') => Promise<void>;
+  connect: (adapter?: 'unisat' | 'xverse' | 'leather' | 'okx') => Promise<void>;
   disconnect: () => Promise<void>;
 }
 
@@ -57,7 +58,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(async (adapter: 'unisat' | 'xverse' | 'leather' = 'unisat') => {
+  const connect = useCallback(async (adapter: 'unisat' | 'xverse' | 'leather' | 'okx' = 'unisat') => {
     setConnecting(true);
     setError(null);
     try {
@@ -81,6 +82,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const w = await leatherWallet.connect();
         setConnected(w);
         setBalanceSats(null); // Leather balance fetched server-side later
+        return;
+      }
+      if (adapter === 'okx') {
+        if (!okxInstalled()) {
+          throw new Error(
+            'OKX Wallet extension not installed. Install from https://www.okx.com/web3 then refresh.',
+          );
+        }
+        const w = await okxWallet.connect();
+        setConnected(w);
+        setBalanceSats(null); // OKX balance fetched server-side later
         return;
       }
       // default: unisat
@@ -126,7 +138,7 @@ export function useWallet(): WalletState {
       balanceSats: null,
       connecting: false,
       error: null,
-      async connect(_adapter?: 'unisat' | 'xverse' | 'leather') {
+      async connect(_adapter?: 'unisat' | 'xverse' | 'leather' | 'okx') {
         throw new Error('useWallet called outside WalletProvider');
       },
       async disconnect() {},

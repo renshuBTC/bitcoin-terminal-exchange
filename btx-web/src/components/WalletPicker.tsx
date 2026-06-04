@@ -26,7 +26,7 @@ function detect(): WalletOption[] {
       { id: 'unisat', label: 'UniSat', installed: false, installUrl: 'https://unisat.io/', status: 'ready' },
       { id: 'xverse', label: 'Xverse', installed: false, installUrl: 'https://www.xverse.app/', status: 'ready' },
       { id: 'leather', label: 'Leather', installed: false, installUrl: 'https://leather.io/', status: 'ready' },
-      { id: 'okx', label: 'OKX Wallet', installed: false, installUrl: 'https://www.okx.com/web3', status: 'coming-soon' },
+      { id: 'okx', label: 'OKX Wallet', installed: false, installUrl: 'https://www.okx.com/web3', status: 'ready' },
     ];
   }
   const w = window as unknown as {
@@ -39,7 +39,7 @@ function detect(): WalletOption[] {
     { id: 'unisat',  label: 'UniSat',     installed: !!w.unisat,                           installUrl: 'https://unisat.io/',         status: 'ready' },
     { id: 'xverse',  label: 'Xverse',     installed: !!w.XverseProviders?.BitcoinProvider, installUrl: 'https://www.xverse.app/',    status: 'ready' },
     { id: 'leather', label: 'Leather',    installed: !!w.LeatherProvider,                  installUrl: 'https://leather.io/',        status: 'ready' },
-    { id: 'okx',     label: 'OKX Wallet', installed: !!w.okxwallet?.bitcoin,               installUrl: 'https://www.okx.com/web3',   status: 'coming-soon' },
+    { id: 'okx',     label: 'OKX Wallet', installed: !!w.okxwallet?.bitcoin,               installUrl: 'https://www.okx.com/web3',   status: 'ready' },
   ];
 }
 
@@ -95,12 +95,15 @@ export function WalletPickerButton() {
       window.open(opt.installUrl, '_blank', 'noopener');
       return;
     }
-    if (opt.id === 'unisat' || opt.id === 'xverse' || opt.id === 'leather') {
+    if (
+      opt.id === 'unisat' ||
+      opt.id === 'xverse' ||
+      opt.id === 'leather' ||
+      opt.id === 'okx'
+    ) {
       await connect(opt.id);
       return;
     }
-    // OKX adapter not yet implemented.
-    window.open(opt.installUrl, '_blank', 'noopener');
   };
 
   return (
