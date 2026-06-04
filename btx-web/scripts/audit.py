@@ -220,6 +220,126 @@ def audit_imports(root: str, idx: dict[str, set[str]]) -> list[tuple[str, str, s
     return issues
 
 
+# -------- audit 3: bracket balance --------
+#
+# Catches silent truncations like the api.ts mid-expression break that
+# slipped past audits 1+2 in commits fd18901 → c372488. Walks each .ts
+# / .tsx file once, ignoring brackets inside string/template/comment,
+# and reports any net non-zero brace/paren/bracket count.
+
+def audit_bracket_balance(root: str) -> list[tuple[str, int, int, int]]:
+    """Return (file, brace_delta, paren_delta, sqbracket_delta) for any
+    file with non-zero counts. Empty list = all files balanced."""
+    issues: list[tuple[str, int, int, int]] = []
+    files = sorted(
+        glob.glob(f"{root}/**/*.tsx", recursive=True)
+        + glob.glob(f"{root}/**/*.ts", recursive=True)
+    )
+    for fp in files:
+        try:
+            with open(fp) as f:
+                src = f.read()
+        except OSError:
+            continue
+        b, p, sq = _scan_brackets(src)
+        if b != 0 or p != 0 or sq != 0:
+            issues.append((fp, b, p, sq))
+    return issues
+
+
+def _scan_brackets(src: str) -> tuple[int, int, int]:
+    """Walk src once. Track strings ('"`), single-line // comments,
+    block /* */ comments, JSX-style tags only loosely (we don't enter
+    JSX expression mode). Return signed deltas for {} (), []."""
+    b = p = sq = 0
+    i = 0
+    n = len(src)
+    in_str: str | None = None
+    in_line_comment = False
+    in_block_comment = False
+    in_template = False
+    while i < n:
+        c = src[i]
+        nxt = src[i + 1] if i + 1 < n else ''
+        if in_line_comment:
+            if c == '\n':
+                in_line_comment = False
+            i += 1
+            continue
+        if in_block_comment:
+            if c == '*' and nxt == '/':
+                in_block_comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+        if in_template:
+            if c == '\\':
+                i += 2
+                continue
+            if c == '`':
+                in_template = False
+                i += 1
+                continue
+            # ${ ... } is an embedded expression; track brace depth inside it
+            if c == '$' and nxt == '{':
+                b += 1
+                i += 2
+                # naively read until matching }
+                depth = 1
+                while i < n and depth > 0:
+                    cc = src[i]
+                    if cc == '{':
+                        depth += 1
+                        b += 1
+                    elif cc == '}':
+                        depth -= 1
+                        b -= 1
+                    i += 1
+                continue
+            i += 1
+            continue
+        if in_str is not None:
+            if c == '\\':
+                i += 2
+                continue
+            if c == in_str:
+                in_str = None
+            i += 1
+            continue
+        # Not in any string/comment/template.
+        if c == '/' and nxt == '/':
+            in_line_comment = True
+            i += 2
+            continue
+        if c == '/' and nxt == '*':
+            in_block_comment = True
+            i += 2
+            continue
+        if c == '"' or c == "'":
+            in_str = c
+            i += 1
+            continue
+        if c == '`':
+            in_template = True
+            i += 1
+            continue
+        if c == '{':
+            b += 1
+        elif c == '}':
+            b -= 1
+        elif c == '(':
+            p += 1
+        elif c == ')':
+            p -= 1
+        elif c == '[':
+            sq += 1
+        elif c == ']':
+            sq -= 1
+        i += 1
+    return b, p, sq
+
+
 # -------- main --------
 
 def main() -> int:
@@ -231,7 +351,7 @@ def main() -> int:
     fail = 0
 
     tokens = parse_tailwind_color_tokens('tailwind.config.ts')
-    print(f"== audit 1/2: Tailwind color classes ({len(tokens)} declared tokens) ==")
+    print(f"== audit 1/3: Tailwind color classes ({len(tokens)} declared tokens) ==")
     tw_issues = audit_tailwind_classes('src', tokens)
     if not tw_issues:
         print("  OK")
@@ -242,7 +362,7 @@ def main() -> int:
 
     print()
     idx = build_export_index('src')
-    print(f"== audit 2/2: named imports vs exports across {len(idx)} files ==")
+    print(f"== audit 2/3: named imports vs exports across {len(idx)} files ==")
     imp_issues = audit_imports('src', idx)
     if not imp_issues:
         print("  OK")
@@ -252,6 +372,16 @@ def main() -> int:
             print(f"  FAIL  {fp}")
             print(f"        imports {name} from '{path}' (resolved {target})")
             print(f"        actual exports: {', '.join(exports) or '(none)'}")
+
+    print()
+    print(f"== audit 3/3: bracket balance ==")
+    br_issues = audit_bracket_balance('src')
+    if not br_issues:
+        print("  OK")
+    else:
+        fail = 1
+        for fp, b, p, sq in br_issues:
+            print(f"  FAIL  {fp}  net {{}}={b:+d}  ()={p:+d}  []={sq:+d}")
 
     print()
     print("== summary: pass ==" if fail == 0 else "== summary: FAIL ==")

@@ -15,6 +15,7 @@ import {
   useEffect,
   useState,
 } from 'react';
+import { api } from '@/lib/api';
 import type { ConnectedWallet } from '@/lib/wallet';
 import {
   unisatBalanceSats,
@@ -70,7 +71,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         const w = await xverseWallet.connect();
         setConnected(w);
-        setBalanceSats(null); // Xverse balance fetched server-side later
+        setBalanceSats(await api.addressBalanceSats(w.address));
         return;
       }
       if (adapter === 'leather') {
@@ -81,7 +82,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         const w = await leatherWallet.connect();
         setConnected(w);
-        setBalanceSats(null); // Leather balance fetched server-side later
+        setBalanceSats(await api.addressBalanceSats(w.address));
         return;
       }
       if (adapter === 'okx') {
@@ -92,7 +93,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         const w = await okxWallet.connect();
         setConnected(w);
-        setBalanceSats(null); // OKX balance fetched server-side later
+        setBalanceSats(await api.addressBalanceSats(w.address));
         return;
       }
       // default: unisat
