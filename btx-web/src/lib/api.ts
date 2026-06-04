@@ -36,6 +36,31 @@ export interface Btx2OrderView {
   offer_outpoint: string;
   expiry: number;
   announce_block_height: number;
+  /**
+   * Trading-economics fields. Added to the server-side schema in the
+   * 'enrich OrderMetadata' brk-btx commit. Optional on the type so
+   * the frontend keeps rendering against older indexers that haven't
+   * shipped that commit yet — those servers will simply omit these
+   * keys and the UI shows '—' instead of fake numbers.
+   */
+  rune_block?: number;
+  rune_tx?: number;
+  amount?: number;
+  price?: number;
+}
+
+/**
+ * True when the server-side OrderView is enriched with the trading
+ * economics fields (so we can render real price/size instead of
+ * synthetic placeholders). Used by OrderBook to hide the orange
+ * "synthetic" chip the moment the backend ships the enrichment.
+ */
+export function orderViewIsEnriched(o: Btx2OrderView): boolean {
+  return (
+    typeof o.amount === 'number' &&
+    typeof o.price === 'number' &&
+    typeof o.rune_block === 'number'
+  );
 }
 
 export interface Btx2StateCounts {

@@ -129,41 +129,68 @@ export function BottomTable({ orders }: BottomTableProps) {
                 </td>
               </tr>
             ) : (
-              rowsForTab.map((o) => (
-                <tr
-                  key={o.id_hex}
-                  onClick={() =>
-                    select({
-                      label: `${o.id_hex.slice(0, 16)}…`,
-                      artifactHex: o.id_hex,
-                      source: 'bottom-table',
-                      detail: {
-                        // Amount / price / side aren't on Btx2OrderView
-                        // yet (the view exposes only id + state + maker
-                        // pubkey + outpoint + heights — see lib/api.ts).
-                        // When those fields land they slot in here.
-                        makerShort: `${o.maker_pubkey_hex.slice(0, 8)}…`,
-                      },
-                    })
-                  }
-                  className="border-t border-border-soft hover:bg-hover cursor-pointer"
-                >
-                  <td className="px-4 py-2 font-mono text-fg">{o.state}</td>
-                  <td className="px-4 py-2 font-mono text-fg">—</td>
-                  <td className="px-4 py-2 font-mono text-fg text-right">—</td>
-                  <td className="px-4 py-2 font-mono text-fg text-right">—</td>
-                  <td className="px-4 py-2 font-mono text-fg text-right">—</td>
-                  <td className="px-4 py-2 font-mono text-fg">
-                    {o.offer_outpoint}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-fg text-right">
-                    {o.announce_block_height.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-fg text-right">
-                    {o.expiry.toLocaleString()}
-                  </td>
-                </tr>
-              ))
+              rowsForTab.map((o) => {
+                const runeId =
+                  typeof o.rune_block === 'number' &&
+                  typeof o.rune_tx === 'number'
+                    ? `${o.rune_block}:${o.rune_tx}`
+                    : '—';
+                const amountText =
+                  typeof o.amount === 'number'
+                    ? o.amount.toLocaleString()
+                    : '—';
+                const priceText =
+                  typeof o.price === 'number'
+                    ? o.price.toLocaleString()
+                    : '—';
+                const totalText =
+                  typeof o.amount === 'number' && typeof o.price === 'number'
+                    ? ((o.amount * o.price) / 1e8).toLocaleString(undefined, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 8,
+                      })
+                    : '—';
+                return (
+                  <tr
+                    key={o.id_hex}
+                    onClick={() =>
+                      select({
+                        label: `${o.id_hex.slice(0, 16)}…`,
+                        artifactHex: o.id_hex,
+                        source: 'bottom-table',
+                        detail: {
+                          rune: runeId === '—' ? undefined : runeId,
+                          amount: o.amount,
+                          priceSats: o.price,
+                          makerShort: `${o.maker_pubkey_hex.slice(0, 8)}…`,
+                        },
+                      })
+                    }
+                    className="border-t border-border-soft hover:bg-hover cursor-pointer"
+                  >
+                    <td className="px-4 py-2 font-mono text-fg">{o.state}</td>
+                    <td className="px-4 py-2 font-mono text-fg">{runeId}</td>
+                    <td className="px-4 py-2 font-mono text-fg text-right">
+                      {amountText}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-fg text-right">
+                      {priceText}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-fg text-right">
+                      {totalText}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-fg">
+                      {o.offer_outpoint}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-fg text-right">
+                      {o.announce_block_height.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-fg text-right">
+                      {o.expiry.toLocaleString()}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

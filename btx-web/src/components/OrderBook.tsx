@@ -7,7 +7,7 @@
  * input. Sample asks/bids render when the indexer hasn't yet observed
  * any BTX2 envelopes — same approach as preview.html.
  */
-import type { Btx2OrderView } from '@/lib/api';
+import { orderViewIsEnriched, type Btx2OrderView } from '@/lib/api';
 import { useSelectedOrder } from './SelectedOrderProvider';
 
 interface OrderBookProps {
@@ -42,34 +42,50 @@ const SAMPLE_BIDS: BookRow[] = [
 
 export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
   const empty = orders.length === 0;
-  // Btx2OrderView does NOT yet expose amount/price/side fields — only
-  // id_hex + state + maker_pubkey + offer_outpoint + heights. So even
-  // when we have real orders, the price/size columns are synthetic
-  // (deterministic-but-fake) placeholders keyed by id. The header
-  // honestly labels this until the backend OrderView is enriched.
+  // When the backend OrderView is enriched (amount/price present), we
+  // render real depth ladder rows from the orders. When it isn't (older
+  // indexer), we fall back to deterministic placeholders keyed by id
+  // and flag them with a "synthetic" chip in the header.
+  const enriched = !empty && orders.every(orderViewIsEnriched);
+  const fieldsSynthetic = !empty && !enriched;
+
+  const realRows = (slice: Btx2OrderView[]): BookRow[] =>
+    slice.map((o, i) => ({
+      // price is sats/unit, amount is base units, total = amount × price (sats).
+      price: o.price ?? 0,
+      size: o.amount ?? 0,
+      total: (o.amount ?? 0) * (o.price ?? 0),
+      // Depth-bar % is rank-based so the top of book always reads as
+      // the deepest pool; real per-row volume scaling lands later.
+      pct: Math.max(15, 60 - i * 8),
+      source: 'live',
+      sourceId: o.id_hex,
+    }));
+
   const asks: BookRow[] = empty
     ? SAMPLE_ASKS
-    : orders.slice(0, 5).map((o, i) => ({
-        price: 9500 + i * 10,
-        size: 100,
-        total: 950000 + i * 1000,
-        pct: 30,
-        source: 'live',
-        sourceId: o.id_hex,
-      }));
+    : enriched
+      ? realRows(orders.slice(0, 5))
+      : orders.slice(0, 5).map((o, i) => ({
+          price: 9500 + i * 10,
+          size: 100,
+          total: 950000 + i * 1000,
+          pct: 30,
+          source: 'live',
+          sourceId: o.id_hex,
+        }));
   const bids: BookRow[] = empty
     ? SAMPLE_BIDS
-    : orders.slice(5, 10).map((o, i) => ({
-        price: 9490 - i * 10,
-        size: 100,
-        total: 949000 - i * 1000,
-        pct: 25,
-        source: 'live',
-        sourceId: o.id_hex,
-      }));
-  // True when the columns are fabricated regardless of whether there
-  // are real orders behind them.
-  const fieldsSynthetic = true;
+    : enriched
+      ? realRows(orders.slice(5, 10))
+      : orders.slice(5, 10).map((o, i) => ({
+          price: 9490 - i * 10,
+          size: 100,
+          total: 949000 - i * 1000,
+          pct: 25,
+          source: 'live',
+          sourceId: o.id_hex,
+        }));
 
   return (
     <div className="bg-bg p-3.5 flex flex-col">
