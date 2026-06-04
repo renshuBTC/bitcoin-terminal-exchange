@@ -189,6 +189,11 @@ SUB_TESTS = [
         None,
     ),
     (
+        "BIP-327 MuSig2 nonce_gen + nonce_agg vectors (Phase 1 of refactor)",
+        "btx_xtest_vs_bip327_nonces.py",
+        "Bitcoin CoreX/bitcoin-bips-reference/bip-0327/vectors/nonce_gen_vectors.json",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
