@@ -179,6 +179,11 @@ SUB_TESTS = [
         None,
     ),
     (
+        "MuSig2 pool-sign output is BIP-340-valid (consensus-level)",
+        "btx_xtest_vs_external_musig2_pool.py",
+        None,
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
