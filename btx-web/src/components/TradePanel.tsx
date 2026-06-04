@@ -11,10 +11,14 @@
  * later commit; today's deliverable is the wallet signing roundtrip.
  */
 import { useEffect, useState } from 'react';
-import { useWallet } from './WalletProvider';
-import { useSelectedOrder } from './SelectedOrderProvider';
-import { SelectedOrderDetail } from './SelectedOrderDetail';
+import {
+  appendAttestation,
+  emitAttestationsChanged,
+} from '@/lib/attestations';
 import { unisatWallet } from '@/lib/wallets/unisat';
+import { SelectedOrderDetail } from './SelectedOrderDetail';
+import { useSelectedOrder } from './SelectedOrderProvider';
+import { useWallet } from './WalletProvider';
 
 type Mode = 'open' | 'addressed';
 type Tab = 'publish' | 'fill' | 'otc';
@@ -86,6 +90,15 @@ export function TradePanel() {
       };
       const message = JSON.stringify(snapshot, null, 2);
       const signature = await unisatWallet.signMessage(message, 'bip322');
+      appendAttestation({
+        kind: 'fill',
+        provider: connected?.providerName ?? 'wallet',
+        address: connected?.address ?? '',
+        network: connected?.network ?? 'mainnet',
+        signature,
+        summary: `fill ← ${fillArtifact.trim().slice(0, 20)}…`,
+      });
+      emitAttestationsChanged();
       setFillResult({
         ok: true,
         text: `BIP-322 fill-commitment OK\nsignature: ${signature.slice(0, 24)}…${signature.slice(-12)}`,
@@ -130,6 +143,15 @@ export function TradePanel() {
       };
       const message = JSON.stringify(snapshot, null, 2);
       const signature = await unisatWallet.signMessage(message, 'bip322');
+      appendAttestation({
+        kind: 'publish',
+        provider: connected?.providerName ?? 'wallet',
+        address: connected?.address ?? '',
+        network: connected?.network ?? 'mainnet',
+        signature,
+        summary: `${side} ${form.amount} ${form.rune} @ ${form.priceBtc} BTC`,
+      });
+      emitAttestationsChanged();
       setResult({
         ok: true,
         text: `BIP-322 attestation OK\nsignature: ${signature.slice(0, 24)}…${signature.slice(-12)}`,

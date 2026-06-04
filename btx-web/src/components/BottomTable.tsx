@@ -11,10 +11,16 @@
 import { useEffect, useState } from 'react';
 
 import { api, type Btx2OrderView } from '@/lib/api';
+import {
+  clearAttestations,
+  onAttestationsChanged,
+  readAttestations,
+  type Attestation,
+} from '@/lib/attestations';
 import { useSelectedOrder } from './SelectedOrderProvider';
 import { useWallet } from './WalletProvider';
 
-type BTab = 'orders' | 'pending' | 'trades' | 'balances';
+type BTab = 'orders' | 'pending' | 'trades' | 'balances' | 'activity';
 
 interface BottomTableProps {
   orders: Btx2OrderView[];
@@ -82,11 +88,16 @@ export function BottomTable({ orders }: BottomTableProps) {
         <BTabBtn on={tab === 'balances'} onClick={() => setTab('balances')}>
           Balances
         </BTabBtn>
+        <BTabBtn on={tab === 'activity'} onClick={() => setTab('activity')}>
+          My Activity
+        </BTabBtn>
         <span className="ml-auto text-dim text-[11px] cursor-default">
           Filter ▾
         </span>
       </div>
-      {tab === 'balances' ? (
+      {tab === 'activity' ? (
+        <ActivityPanel />
+      ) : tab === 'balances' ? (
         <BalancesPanel
           connected={!!connected}
           address={connected?.address ?? null}
@@ -246,6 +257,100 @@ function BalancesPanel({
       </tbody>
     </table>
   );
+}
+
+/**
+ * "My Activity" — paint the local attestation log. Pure-client; reads
+ * localStorage on mount and after every `appendAttestation` (via the
+ * onAttestationsChanged event). Empty-state explains where rows
+ * come from so a fresh user understands.
+ */
+function ActivityPanel() {
+  const [rows, setRows] = useState<Attestation[]>([]);
+  useEffect(() => {
+    setRows(readAttestations());
+    return onAttestationsChanged(() => setRows(readAttestations()));
+  }, []);
+  const clear = () => {
+    if (typeof window === 'undefined') return;
+    const ok = window.confirm(
+      'Clear all locally-saved attestations? This does not affect anything on-chain.',
+    );
+    if (!ok) return;
+    clearAttestations();
+    setRows([]);
+  };
+  if (rows.length === 0) {
+    return (
+      <div className="text-dim text-center py-6 font-mono text-xs px-4">
+        No saved attestations yet.
+        <br />
+        Publish or fill an order — each successful BIP-322 signature
+        is saved locally so you can re-broadcast later.
+      </div>
+    );
+  }
+  return (
+    <div>
+      <table className="w-full border-collapse text-xs bg-bg">
+        <thead>
+          <tr>
+            <Th>When</Th>
+            <Th>Kind</Th>
+            <Th>Wallet</Th>
+            <Th>Summary</Th>
+            <Th>Signature</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-t border-border-soft">
+              <td className="px-4 py-2 font-mono text-fg whitespace-nowrap">
+                {formatRelative(r.ts)}
+              </td>
+              <td className="px-4 py-2 font-mono">
+                <span
+                  className={
+                    r.kind === 'publish' ? 'text-orange' : 'text-green'
+                  }
+                >
+                  {r.kind}
+                </span>
+              </td>
+              <td className="px-4 py-2 font-mono text-fg">
+                {r.provider}
+                <span className="text-dim"> · {r.network}</span>
+              </td>
+              <td className="px-4 py-2 font-mono text-fg break-all">
+                {r.summary}
+              </td>
+              <td className="px-4 py-2 font-mono text-dim break-all">
+                {r.signature.slice(0, 12)}…{r.signature.slice(-8)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex justify-end px-4 py-2 border-t border-border-soft">
+        <button
+          onClick={clear}
+          className="text-[10px] text-dim uppercase tracking-wider hover:text-red font-mono"
+        >
+          Clear local log
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatRelative(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  return new Date(t).toLocaleString();
 }
 
 function BTabBtn({
