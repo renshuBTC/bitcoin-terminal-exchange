@@ -6,16 +6,18 @@ exchange` plus 2 cross-repo ports to `brk-btx` (the Rust indexer side).
 
 ## Quick stats
 
-- **29 commits pushed total** across two repos:
-  - **27 commits** to `bitcoin-terminal-exchange/main`
-  - **2 commits** to `brk-btx/main` (the cross-repo BIP-322 SIGHASH_ALL
-    port + wiring-sanity test)
+- **34 commits pushed total** across two repos:
+  - **30 commits** to `bitcoin-terminal-exchange/main`
+  - **4 commits** to `brk-btx/main` (BIP-322 SIGHASH_ALL port, wiring-sanity
+    test, BIP-327 multi-round verification port, Py↔Rust random cross-test)
 - **12 external scouts** (cross-validation oracles)
-- **4 BTX-side engineering tasks** in bitcoin-terminal-exchange
-- **2 cross-repo brk-btx ports** completing end-to-end SIGHASH_ALL
-  interop top-to-bottom
+- **5 BTX-side engineering tasks** in bitcoin-terminal-exchange (incl.
+  Python generator for the brk-btx cross-test)
+- **4 cross-repo brk-btx ports** completing end-to-end interop for both
+  BIP-322 SIGHASH_ALL AND BIP-327 multi-round verification
 - **Python suite: 12 → 28 sub-tests**
-- **brk-btx Rust tests: +3 (2 raw-layer + 1 wiring-sanity)**
+- **brk-btx Rust tests: +6 (2 BIP-322 raw + 1 BIP-322 wiring + 3 BIP-327
+  canonical-vector tests + 1 Py↔Rust random cross-test)**
 - **Bookmark-accuracy this session: 1 of 7 = 14%** — the dominant
   operational lesson, reinforced across multiple deferrals
 
@@ -71,6 +73,15 @@ SIGHASH_DEFAULT.
 | ------ | ----- |
 | `a90403d` | brk-btx: btx_bip322.rs accepts SIGHASH_ALL + bare-base64 |
 | `e2e99ba` | brk-btx: btx_v2_verify wiring-sanity test for SIGHASH_ALL flow-through |
+| `60ebb51` | brk-btx: btx_musig2_protocol — BIP-327 multi-round verification port (Rust, ~805 LOC) |
+| `672a5c3` | brk-btx: Python↔Rust random-input MuSig2 cross-test (5 sessions, byte-identical) |
+
+### Cycle-2 amendments (2026-06-04, post-cycle)
+
+| Commit | Title |
+| ------ | ----- |
+| `1ace536` | Audit pass: mark BTX-musig2-bip327-refactor-scope SUPERSEDED |
+| `4ad6116` | btx_xtest_bip327_random_to_rust: Python generator for brk-btx Rust cross-test |
 
 ## Final suite state — 28 sub-tests
 
