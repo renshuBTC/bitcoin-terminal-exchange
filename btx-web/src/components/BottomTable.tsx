@@ -327,34 +327,12 @@ function ActivityPanel() {
             <Th>Wallet</Th>
             <Th>Summary</Th>
             <Th>Signature</Th>
+            <Th>Body</Th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} className="border-t border-border-soft">
-              <td className="px-4 py-2 font-mono text-fg whitespace-nowrap">
-                {formatRelative(r.ts)}
-              </td>
-              <td className="px-4 py-2 font-mono">
-                <span
-                  className={
-                    r.kind === 'publish' ? 'text-orange' : 'text-green'
-                  }
-                >
-                  {r.kind}
-                </span>
-              </td>
-              <td className="px-4 py-2 font-mono text-fg">
-                {r.provider}
-                <span className="text-dim"> · {r.network}</span>
-              </td>
-              <td className="px-4 py-2 font-mono text-fg break-all">
-                {r.summary}
-              </td>
-              <td className="px-4 py-2 font-mono text-dim break-all">
-                {r.signature.slice(0, 12)}…{r.signature.slice(-8)}
-              </td>
-            </tr>
+            <ActivityRow key={r.id} row={r} />
           ))}
         </tbody>
       </table>
@@ -367,6 +345,110 @@ function ActivityPanel() {
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Activity log row. For 'fill' attestations we know which order id
+ * the taker committed to (it's the artifactHex from the click). For
+ * 'publish' we don't yet know the on-chain order id — the broadcast
+ * step assigns it. So the body fetch is only meaningful when the
+ * summary looks like a fill targeting a 72-char hex id (parsed from
+ * the 'fill ← <id>' summary we synthesize in TradePanel.fill()).
+ *
+ * The body fetch uses the new GET /api/v1/btx2/orders/{id}/body
+ * endpoint added in the brk-btx commit B.
+ */
+function ActivityRow({ row }: { row: Attestation }) {
+  const [bodyState, setBodyState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'data'; hex: string }
+    | { kind: 'error'; message: string }
+    | { kind: 'unsupported' }
+  >({ kind: 'idle' });
+
+  const idFromFill = (() => {
+    if (row.kind !== 'fill') return null;
+    // Summary format: "fill ← <first-20-chars-of-id>…" — strip
+    // arrow + ellipsis. We only fetch when the full 72-char hex
+    // form is recoverable; otherwise mark unsupported.
+    const m = row.summary.match(/fill ← ([0-9a-fA-F]+)/);
+    if (!m) return null;
+    return m[1].length >= 72 ? m[1].slice(0, 72) : null;
+  })();
+
+  const fetchBody = async () => {
+    if (!idFromFill) {
+      setBodyState({ kind: 'unsupported' });
+      return;
+    }
+    setBodyState({ kind: 'loading' });
+    try {
+      const hex = await api.orderBody(idFromFill);
+      if (hex === null) {
+        setBodyState({ kind: 'error', message: 'order not in store' });
+        return;
+      }
+      setBodyState({ kind: 'data', hex });
+    } catch (e) {
+      setBodyState({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'fetch failed',
+      });
+    }
+  };
+
+  return (
+    <tr className="border-t border-border-soft align-top">
+      <td className="px-4 py-2 font-mono text-fg whitespace-nowrap">
+        {formatRelative(row.ts)}
+      </td>
+      <td className="px-4 py-2 font-mono">
+        <span className={row.kind === 'publish' ? 'text-orange' : 'text-green'}>
+          {row.kind}
+        </span>
+      </td>
+      <td className="px-4 py-2 font-mono text-fg">
+        {row.provider}
+        <span className="text-dim"> · {row.network}</span>
+      </td>
+      <td className="px-4 py-2 font-mono text-fg break-all">{row.summary}</td>
+      <td className="px-4 py-2 font-mono text-dim break-all">
+        {row.signature.slice(0, 12)}…{row.signature.slice(-8)}
+      </td>
+      <td className="px-4 py-2 font-mono">
+        {bodyState.kind === 'idle' && (
+          <button
+            onClick={fetchBody}
+            disabled={row.kind === 'publish'}
+            title={
+              row.kind === 'publish'
+                ? "Publish doesn't yet have an on-chain order id"
+                : 'Fetch the canonical signed body bytes'
+            }
+            className="text-[10px] text-dim uppercase tracking-wider border border-border-soft rounded-sm px-1.5 py-0.5 hover:text-fg-bright hover:border-line-strong disabled:opacity-40 disabled:cursor-default cursor-pointer"
+          >
+            fetch
+          </button>
+        )}
+        {bodyState.kind === 'loading' && (
+          <span className="text-[10px] text-dim">loading…</span>
+        )}
+        {bodyState.kind === 'unsupported' && (
+          <span className="text-[10px] text-dim">n/a</span>
+        )}
+        {bodyState.kind === 'error' && (
+          <span className="text-[10px] text-red">· {bodyState.message}</span>
+        )}
+        {bodyState.kind === 'data' && (
+          <span className="text-[10px] text-green break-all">
+            {bodyState.hex.slice(0, 16)}…
+            <span className="text-dim"> ({bodyState.hex.length / 2}B)</span>
+          </span>
+        )}
+      </td>
+    </tr>
   );
 }
 

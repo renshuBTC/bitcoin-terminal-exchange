@@ -238,6 +238,18 @@ export const api = {
 
   orders: () => get<Btx2OrderView[]>('/api/v1/btx2/orders'),
   order: (id: string) => get<Btx2OrderView | null>(`/api/v1/btx2/orders/${id}`),
+  /**
+   * Canonical signed-body bytes for an order, hex-encoded. Returns
+   * null when the id isn't in the store or doesn't parse. This is
+   * the exact preimage of TaggedHash('BTX2/order/sighash', body) so
+   * an external verifier can recompute the per-order sighash and
+   * check the maker signature without trusting the indexer.
+   *
+   * Endpoint (added 2026-06-04 in brk-btx):
+   *   GET /api/v1/btx2/orders/{id_hex}/body  →  Option<String>
+   */
+  orderBody: (id: string) =>
+    get<string | null>(`/api/v1/btx2/orders/${id}/body`),
   conditional: () => get<Btx2OrderView[]>('/api/v1/btx2/conditional'),
   filled: () => get<Btx2OrderView[]>('/api/v1/btx2/filled'),
   cancelled: () => get<Btx2OrderView[]>('/api/v1/btx2/cancelled'),
