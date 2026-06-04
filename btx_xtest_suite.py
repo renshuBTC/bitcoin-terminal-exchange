@@ -174,6 +174,11 @@ SUB_TESTS = [
         None,
     ),
     (
+        "btx_s2c output is BIP-340-valid (closes last 'blocked' bookmark)",
+        "btx_xtest_vs_external_s2c.py",
+        None,
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
