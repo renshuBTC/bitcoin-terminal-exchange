@@ -1,15 +1,47 @@
+/* BTX design tokens — inlined from assets/btx.css so the Next.js app
+   renders the same as the installer's btx_trade.html.
+   Pure-black background, Source Code Pro mono, #ff8c00 orange. */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600;700&family=Roboto+Condensed:wght@700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  --bg: #000;
+  --fg: #d4d4d4;
+  --fg-bright: #fff;
+  --muted: #888;
+  --dim: #666;
+  --border: #2a2a2a;
+  --border-soft: #1f1f1f;
+  --hover: #1a1a1a;
+  --panel: #0d0d0d;
+  --menu: #111;
+  --line-strong: #555;
+  --orange: #ff8c00;
+  --orange-bright: #ffaa33;
+  --red: #f0616d;
+  --green: #26a69a;
+  --font-mono: 'Source Code Pro', Consolas, Menlo, monospace;
+  --font-display: 'Roboto Condensed', system-ui, sans-serif;
 }
 
-body {
-  @apply bg-panel text-fg-1 font-sans antialiased;
+* { margin: 0; padding: 0; box-sizing: border-box }
+::selection { background: var(--orange); color: #000 }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
-
-a {
-  @apply text-btc-orange hover:underline;
+a { color: var(--fg); text-decoration: none }
+a:hover {
+  color: var(--fg-bright);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--orange);
 }

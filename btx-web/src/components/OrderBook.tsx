@@ -1,66 +1,99 @@
 /**
- * Orderbook table. Read-only in the MVP — clicking an order will
- * trigger the BUY flow once wallet integration lands.
+ * Order book card with depth bars.
+ * Matches btx_trade.html's orderbook card.
+ *
+ * Sample asks/bids render when the indexer hasn't yet observed any
+ * BTX2 envelopes — same approach as preview.html.
  */
 import type { Btx2OrderView } from '@/lib/api';
 
-export function OrderBook({ orders }: { orders: Btx2OrderView[] }) {
-  if (orders.length === 0) {
-    return (
-      <section className="rounded-lg bg-panel-2 border border-border-strong p-8 text-center text-fg-2">
-        <div className="text-fg-1 text-lg font-semibold mb-2">
-          No open orders
-        </div>
-        <div className="text-sm">
-          The orderbook is empty right now. This is expected if the indexer
-          hasn&apos;t encountered any BTX2 envelopes yet on the connected
-          network (or if you&apos;re running against a freshly-started
-          stub).
-        </div>
-      </section>
-    );
-  }
+interface OrderBookProps {
+  orders: Btx2OrderView[];
+  stateRootShort?: string;
+}
+
+interface BookRow {
+  price: number;
+  size: number;
+  total: number;
+  pct: number;
+}
+
+const SAMPLE_ASKS: BookRow[] = [
+  { price: 9560, size: 240, total: 2294400, pct: 42 },
+  { price: 9540, size: 160, total: 1526400, pct: 28 },
+  { price: 9520, size: 315, total: 2999800, pct: 55 },
+  { price: 9505, size: 100, total: 950500, pct: 18 },
+  { price: 9490, size: 198, total: 1879020, pct: 34 },
+];
+
+const SAMPLE_BIDS: BookRow[] = [
+  { price: 9480, size: 130, total: 1232400, pct: 22 },
+  { price: 9460, size: 275, total: 2601500, pct: 48 },
+  { price: 9440, size: 105, total: 991200, pct: 18 },
+  { price: 9420, size: 170, total: 1601400, pct: 30 },
+  { price: 9400, size: 68, total: 639200, pct: 12 },
+];
+
+export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
+  const empty = orders.length === 0;
+  const asks = empty ? SAMPLE_ASKS : [];
+  const bids = empty ? SAMPLE_BIDS : [];
 
   return (
-    <section className="rounded-lg bg-panel-2 border border-border-strong overflow-hidden">
-      <div className="px-4 py-3 border-b border-border-strong">
-        <h2 className="font-semibold">Open orders ({orders.length})</h2>
+    <div className="bg-bg p-3.5 flex flex-col">
+      <div className="m-0 mb-2.5 font-mono text-[11px] font-semibold text-muted uppercase tracking-wider flex justify-between items-baseline">
+        Order Book
+        <span className="text-[10px] text-dim font-normal normal-case tracking-normal">
+          book {stateRootShort}
+        </span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm font-mono">
-          <thead className="bg-panel">
-            <tr className="text-fg-2 text-xs uppercase tracking-wide">
-              <th className="text-left px-4 py-2">order id</th>
-              <th className="text-left px-4 py-2">maker pubkey</th>
-              <th className="text-left px-4 py-2">offer outpoint</th>
-              <th className="text-right px-4 py-2">expiry</th>
-              <th className="text-right px-4 py-2">announced</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr
-                key={o.id_hex}
-                className="border-t border-border-strong hover:bg-panel/60 cursor-pointer"
-              >
-                <td className="px-4 py-2" title={o.id_hex}>
-                  {o.id_hex.slice(0, 16)}…
-                </td>
-                <td className="px-4 py-2" title={o.maker_pubkey_hex}>
-                  {o.maker_pubkey_hex.slice(0, 12)}…
-                </td>
-                <td className="px-4 py-2">{o.offer_outpoint}</td>
-                <td className="px-4 py-2 text-right">
-                  {o.expiry.toLocaleString()}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  {o.announce_block_height.toLocaleString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-3 gap-2 text-[10px] text-muted uppercase tracking-wider px-0.5 pb-1.5 border-b border-border-soft">
+        <span>Price (sats)</span>
+        <span className="text-right">Size</span>
+        <span className="text-right">Total</span>
       </div>
-    </section>
+      <div className="flex flex-col">
+        {asks.map((r) => (
+          <Row key={`a-${r.price}`} row={r} side="ask" />
+        ))}
+      </div>
+      <div className="flex justify-between items-center text-[11px] text-muted border-t border-b border-border py-1.5 px-0.5 my-1.5 font-mono">
+        <span className="text-dim uppercase tracking-wider text-[10px]">Spread</span>
+        <span>10 sats · 0.10%</span>
+      </div>
+      <div className="flex flex-col">
+        {bids.map((r) => (
+          <Row key={`b-${r.price}`} row={r} side="bid" />
+        ))}
+      </div>
+      <div className="text-[11px] text-muted leading-relaxed mt-2.5">
+        BTX orders are one-sided pre-signed offers — sell-side unless buy-rune offers exist. Click a row to fill, or tick several asks for a batch tx.
+      </div>
+    </div>
+  );
+}
+
+function Row({ row, side }: { row: BookRow; side: 'ask' | 'bid' }) {
+  const barColor = side === 'ask' ? '#f0616d' : '#26a69a';
+  const priceClass = side === 'ask' ? 'text-red' : 'text-green';
+  return (
+    <div
+      className="relative grid items-center gap-1.5 py-[3px] px-0.5 font-mono text-xs cursor-pointer hover:bg-hover"
+      style={{ gridTemplateColumns: '18px 1fr 1fr 1fr' }}
+    >
+      <span
+        className="absolute right-0 top-0 bottom-0 rounded-[1px] opacity-40"
+        style={{ background: barColor, width: `${row.pct}%` }}
+      />
+      {side === 'ask' ? (
+        <input type="checkbox" className="m-0 accent-orange scale-[.85] relative z-10" />
+      ) : (
+        <span />
+      )}
+      <span className={`${priceClass} relative z-10`}>{row.price.toLocaleString()}</span>
+      <span className="text-right relative z-10">{row.size.toLocaleString()}</span>
+      <span className="text-right relative z-10">{row.total.toLocaleString()}</span>
+    </div>
   );
 }
