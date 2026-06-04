@@ -184,6 +184,11 @@ SUB_TESTS = [
         None,
     ),
     (
+        "BIP-322 SIGHASH_ALL verify vs bip322-js (Sparrow/Trezor interop)",
+        "btx_xtest_vs_bip322_js_sighash_all.py",
+        None,
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself

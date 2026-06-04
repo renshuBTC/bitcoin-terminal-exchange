@@ -428,13 +428,21 @@ def _p2tr_spk_from_xonly(output_xonly: bytes) -> bytes:
 
 
 def _bip322_p2tr_sighash(
-    msg_hash: bytes, output_xonly: bytes
+    msg_hash: bytes, output_xonly: bytes, hash_type: int = 0x00
 ) -> bytes:
     """Compute the BIP-341 key-path sighash that a BIP-322 simple P2TR
-    signature must commit to. The to_spend output amount is 0 and the
-    spent scriptPubKey is the address's spk.
+    signature must commit to.
+
+    `hash_type` is 0x00 (SIGHASH_DEFAULT, BTX's default — 64-byte
+    signatures) or 0x01 (SIGHASH_ALL, used by Sparrow Wallet, Trezor
+    Suite, and `bip322-js` with default `Signer.sign` — 65-byte
+    signatures with explicit 0x01 sighash flag).
+
+    Per BIP-341 these two are semantically equivalent but produce
+    different on-chain signatures because SIGHASH_ALL includes the
+    hash_type byte in sigMsg.
     """
-    from btx_taproot import tap_sighash, SIGHASH_DEFAULT
+    from btx_taproot import tap_sighash
 
     spk = _p2tr_spk_from_xonly(output_xonly)
     spend_txid_le = to_spend_txid(msg_hash, spk)
@@ -451,7 +459,7 @@ def _bip322_p2tr_sighash(
         spent_spks=spent_spks,
         vout=vout,
         input_index=0,
-        hash_type=SIGHASH_DEFAULT,
+        hash_type=hash_type,
         ext_flag=0,
     )
 
@@ -504,13 +512,26 @@ def verify_simple_p2tr(message: bytes | str, address: str, signature_str: str) -
     if len(stack) != 1 or len(stack[0]) not in (64, 65):
         return False
     sig = stack[0]
-    if len(sig) == 65 and sig[64] != 0x00:
-        # explicit hash_type byte must be 0x00 (SIGHASH_DEFAULT) for the
-        # simple sighash we compute; non-default isn't covered here.
-        return False
+    # BIP-341 sighash type encoding:
+    #   64-byte sig         → SIGHASH_DEFAULT (0x00)
+    #   65-byte sig last=0x00 → SIGHASH_DEFAULT (non-canonical but valid)
+    #   65-byte sig last=0x01 → SIGHASH_ALL (Sparrow, Trezor, bip322-js default)
+    # SIGHASH_DEFAULT and SIGHASH_ALL are semantically equivalent for
+    # full-output signing; the on-chain bytes differ because SIGHASH_ALL
+    # appends the 0x01 sighash byte into sigMsg.
+    if len(sig) == 64:
+        hash_type = 0x00
+    else:
+        flag = sig[64]
+        if flag not in (0x00, 0x01):
+            # Only SIGHASH_DEFAULT (0x00) or SIGHASH_ALL (0x01) accepted
+            # for the simple P2TR sighash we compute. NONE/SINGLE/ACP
+            # variants would require a different sigMsg shape.
+            return False
+        hash_type = flag
     sig64 = sig[:64]
     mh = message_hash(message)
-    sighash = _bip322_p2tr_sighash(mh, output_xonly)
+    sighash = _bip322_p2tr_sighash(mh, output_xonly, hash_type=hash_type)
     return schnorr_verify(sighash, output_xonly, sig64)
 
 
@@ -760,10 +781,25 @@ def verify_full_p2tr(message: bytes | str, address: str, signature_str: str) -> 
 
 
 def _decode_simple_signature(s: str) -> List[bytes]:
-    """Inverse of _encode_simple_signature. Returns the witness stack."""
-    if not s.startswith("smp"):
-        raise ValueError("missing 'smp' variant prefix")
-    raw = base64.b64decode(s[3:])
+    """Inverse of _encode_simple_signature. Returns the witness stack.
+
+    Accepts two forms:
+      - BTX's `smp<base64>` (the format BTX produces — `smp` is a self-
+        identifying variant prefix BTX prepends so the format type is
+        unambiguous at a glance)
+      - Standard BIP-322 `<base64>` (no prefix — the format produced by
+        bip322-js, Sparrow Wallet, Trezor Suite, and per the BIP-322
+        spec text)
+
+    Both forms decode to the same witness stack. BIP-322 simple format
+    per the spec is: base64(serialized witness) — without any prefix.
+    BTX's `smp` prefix is a BTX-specific extension for self-ID.
+    """
+    if s.startswith("smp"):
+        raw = base64.b64decode(s[3:])
+    else:
+        # Standard BIP-322 simple format — no prefix, raw base64.
+        raw = base64.b64decode(s)
     pos = 0
 
     def _read_compact_size() -> int:
@@ -1051,7 +1087,6 @@ def main() -> int:
             #    Achieved by parsing, mutating, re-encoding.
             try:
                 raw = base64.b64decode(our_sig[3:])
-                # Flip lock_time: last 4 bytes
                 tampered = raw[:-4] + struct.pack("<I", (lt + 1) & 0xFFFFFFFF)
                 tampered_sig = "ful" + base64.b64encode(tampered).decode("ascii")
                 if verify_full_p2tr(msg, addr, tampered_sig):
@@ -1070,29 +1105,13 @@ def main() -> int:
             print(f"  - {f}")
         print(
             f"✗ btx_bip322: hash {ok}/{total}, "
-            f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}, "
-            f"{len(failures)} fail"
+            f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}"
         )
         return 1
 
-    print(f"  message_hash + to_spend + to_sign:  {ok}/{total} PASS")
-    if p2tr_total:
-        print(
-            f"  P2TR simple sign+verify (canonical+round-trip+tamper): "
-            f"{p2tr_ok}/{p2tr_total} PASS"
-        )
-    else:
-        print("  P2TR simple sign+verify: SKIPPED (vectors not found)")
-    if full_total:
-        print(
-            f"  P2TR full sign+verify with time-locks (canonical+round-trip+tamper): "
-            f"{full_ok}/{full_total} PASS"
-        )
-    else:
-        print("  P2TR full sign+verify: SKIPPED (vectors not found)")
     print(
-        f"✓ btx_bip322: {total} hash chains + {p2tr_ok} simple + "
-        f"{full_ok} full P2TR rounds agree with canonical"
+        f"✓ btx_bip322: hash {ok}/{total}, "
+        f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}"
     )
     return 0
 
