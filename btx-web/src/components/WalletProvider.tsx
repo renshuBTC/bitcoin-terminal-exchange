@@ -22,6 +22,7 @@ import {
   unisatRestore,
   unisatWallet,
 } from '@/lib/wallets/unisat';
+import { leatherInstalled, leatherWallet } from '@/lib/wallets/leather';
 import { xverseInstalled, xverseWallet } from '@/lib/wallets/xverse';
 
 interface WalletState {
@@ -29,7 +30,7 @@ interface WalletState {
   balanceSats: number | null;
   connecting: boolean;
   error: string | null;
-  connect: (adapter?: 'unisat' | 'xverse') => Promise<void>;
+  connect: (adapter?: 'unisat' | 'xverse' | 'leather') => Promise<void>;
   disconnect: () => Promise<void>;
 }
 
@@ -56,7 +57,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(async (adapter: 'unisat' | 'xverse' = 'unisat') => {
+  const connect = useCallback(async (adapter: 'unisat' | 'xverse' | 'leather' = 'unisat') => {
     setConnecting(true);
     setError(null);
     try {
@@ -69,6 +70,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const w = await xverseWallet.connect();
         setConnected(w);
         setBalanceSats(null); // Xverse balance fetched server-side later
+        return;
+      }
+      if (adapter === 'leather') {
+        if (!leatherInstalled()) {
+          throw new Error(
+            'Leather extension not installed. Install from https://leather.io/ then refresh.',
+          );
+        }
+        const w = await leatherWallet.connect();
+        setConnected(w);
+        setBalanceSats(null); // Leather balance fetched server-side later
         return;
       }
       // default: unisat
@@ -114,7 +126,7 @@ export function useWallet(): WalletState {
       balanceSats: null,
       connecting: false,
       error: null,
-      async connect(_adapter?: 'unisat' | 'xverse') {
+      async connect(_adapter?: 'unisat' | 'xverse' | 'leather') {
         throw new Error('useWallet called outside WalletProvider');
       },
       async disconnect() {},
