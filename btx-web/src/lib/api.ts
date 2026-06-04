@@ -65,33 +65,36 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export const api = {
-  orders: () => get<Btx2OrderView[]>('/api/v1/btx2/orders'),
-  order: (id: string) => get<Btx2OrderView | null>(`/api/v1/btx2/orders/${id}`),
-  conditional: () => get<Btx2OrderView[]>('/api/v1/btx2/conditional'),
-  filled: () => get<Btx2OrderView[]>('/api/v1/btx2/filled'),
-  cancelled: () => get<Btx2OrderView[]>('/api/v1/btx2/cancelled'),
-  expired: () => get<Btx2OrderView[]>('/api/v1/btx2/expired'),
-  all: () => get<Btx2OrderView[]>('/api/v1/btx2/all'),
-  stats: () => get<Btx2StateCounts>('/api/v1/btx2/stats'),
-  stateRoot: () => get<Btx2StateRoot>('/api/v1/btx2/state_root'),
-  health: () => get<Btx2Health>('/api/v1/btx2/healthz'),
+/**
+ * BRK daily-close price series point.
+ *
+ * Endpoint: `GET /api/series/price_close/day1/data?limit=N`
+ * Response shape (from `crates/brk_server/src/api/series.rs:268-298`):
+ *   a flat JSON array of values, oldest → newest. For the `price_close`
+ *   series (declared in `crates/brk_computer/src/prices/mod.rs:93`)
+ *   each item is a USD close-price as a JSON number.
+ *
+ * Index name `day1` is the canonical identifier; aliases such as
+ * `day`/`date`/`dateindex` are also accepted (see
+ * `crates/brk_types/src/day1.rs:205`).
+ *
+ * We attach a synthetic offset `i` so consumers don't need to track
+ * the index of each point separately.
+ */
+export interface Btx2PricePoint {
+  /** Days from the start of the returned window (0 = oldest). */
+  i: number;
+  /** Close price in USD. */
+  close: number;
+}
 
+export const api = {
   /**
-   * Broadcast a hex-encoded signed transaction. The server forwards it
-   * verbatim to bitcoind; the signing happened in the user's wallet.
-   * Returns the txid on success.
+   * BRK daily-close USD series. Returns up to `limit` most-recent points.
+   * Throws on non-2xx, empty body, or non-numeric items so callers can
+   * fall back to a placeholder cleanly.
    */
-  broadcast: async (rawTxHex: string): Promise<string> => {
-    const res = await fetch(`${API_BASE}/api/v1/btx2/broadcast`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: rawTxHex,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`broadcast failed: ${res.status} ${text}`);
-    }
-    return res.json() as Promise<string>;
-  },
-};
+  pricesClose: async (limit = 90): Promise<Btx2PricePoint[]> => {
+    const res = await fetch(
+      `${API_BASE}/api/series/price_close/day1/data?limit=${limit}`,
+      { headers: { Accept: 'application/json' }, next: { revalidate: 60 } 
