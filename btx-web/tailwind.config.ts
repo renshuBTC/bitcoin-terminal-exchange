@@ -15,6 +15,7 @@ const config: Config = {
         'border-soft': '#1f1f1f',
         hover: '#1a1a1a',
         panel: '#0d0d0d',
+        menu: '#111',
         'line-strong': '#555',
         orange: '#ff8c00',
         'orange-bright': '#ffaa33',
