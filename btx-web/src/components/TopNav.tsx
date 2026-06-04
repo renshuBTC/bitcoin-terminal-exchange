@@ -4,6 +4,7 @@
  * actually opens the wallet, and so we display the short address +
  * provider name after connecting.
  */
+import { AboutPopover } from './AboutPopover';
 import { useWallet } from './WalletProvider';
 import { WalletPickerButton } from './WalletPicker';
 
@@ -51,6 +52,7 @@ export function TopNav({
         >
           Docs
         </a>
+        <AboutPopover />
       </div>
       <div className="ml-auto flex items-center gap-1.5">
         {error && (
