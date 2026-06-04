@@ -17,7 +17,6 @@ import {
   emitAttestationsChanged,
 } from '@/lib/attestations';
 import { EXPECTED_NETWORK } from '@/lib/network';
-import { unisatWallet } from '@/lib/wallets/unisat';
 import { SelectedOrderDetail } from './SelectedOrderDetail';
 import { useSelectedOrder } from './SelectedOrderProvider';
 import { useWallet } from './WalletProvider';
@@ -66,7 +65,7 @@ function validateFillArtifact(s: string): string | null {
 }
 
 export function TradePanel() {
-  const { connected, connect } = useWallet();
+  const { connected, connect, signMessage } = useWallet();
   const [mode, setMode] = useState<Mode>('open');
   const [tab, setTab] = useState<Tab>('publish');
   const [side, setSide] = useState<Side>('sell');
@@ -160,7 +159,7 @@ export function TradePanel() {
         ts: new Date().toISOString(),
       };
       const message = JSON.stringify(snapshot, null, 2);
-      const signature = await unisatWallet.signMessage(message, 'bip322');
+      const signature = await signMessage(message, 'bip322');
       appendAttestation({
         kind: 'fill',
         provider: connected?.providerName ?? 'wallet',
@@ -221,7 +220,7 @@ export function TradePanel() {
         ts: new Date().toISOString(),
       };
       const message = JSON.stringify(snapshot, null, 2);
-      const signature = await unisatWallet.signMessage(message, 'bip322');
+      const signature = await signMessage(message, 'bip322');
       appendAttestation({
         kind: 'publish',
         provider: connected?.providerName ?? 'wallet',
