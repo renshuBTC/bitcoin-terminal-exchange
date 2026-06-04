@@ -501,6 +501,91 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
     });
   })();
 </script>
+<script>
+  // Wallet picker popover for the static preview.
+  // Lists detected wallets next to the Connect button. UniSat is the
+  // only fully-wired adapter; others detect-only with install / coming-soon.
+  (function(){
+    const btn = document.querySelector('.connectBtn');
+    if (!btn) return;
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block';
+    btn.parentNode.insertBefore(wrap, btn);
+    wrap.appendChild(btn);
+
+    const pop = document.createElement('div');
+    pop.style.cssText = 'position:absolute;right:0;top:32px;width:240px;background:var(--menu);border:1px solid var(--line-strong);border-radius:2px;z-index:50;font-size:12px;display:none;box-shadow:0 6px 16px rgba(0,0,0,.45)';
+    wrap.appendChild(pop);
+
+    function detect(){
+      const w = window;
+      return [
+        { id:'unisat',  label:'UniSat',     installed: !!w.unisat,                                                  installUrl:'https://unisat.io/',       status:'ready' },
+        { id:'xverse',  label:'Xverse',     installed: !!(w.XverseProviders && w.XverseProviders.BitcoinProvider),  installUrl:'https://www.xverse.app/',  status:'coming-soon' },
+        { id:'leather', label:'Leather',    installed: !!w.LeatherProvider,                                         installUrl:'https://leather.io/',      status:'coming-soon' },
+        { id:'okx',     label:'OKX Wallet', installed: !!(w.okxwallet && w.okxwallet.bitcoin),                      installUrl:'https://www.okx.com/web3', status:'coming-soon' },
+      ];
+    }
+
+    function render(){
+      const opts = detect();
+      let html = '<div style="padding:8px 12px;border-bottom:1px solid var(--border-soft);color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-size:10px">Connect wallet</div>';
+      opts.forEach(function(o){
+        const dotColor = o.installed
+          ? (o.status === 'ready' ? 'var(--green)' : 'var(--orange)')
+          : 'var(--dim)';
+        const badgeText = !o.installed
+          ? 'install'
+          : (o.status === 'ready' ? 'ready' : 'coming soon');
+        const badgeColor = !o.installed
+          ? 'var(--dim)'
+          : (o.status === 'ready' ? 'var(--green)' : 'var(--orange)');
+        html += ''
+          + '<div data-wid="' + o.id + '" data-url="' + o.installUrl + '" data-installed="' + (o.installed ? '1' : '0')
+          + '" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;font-family:var(--font-mono);cursor:pointer;border-bottom:1px solid var(--border-soft)">'
+          + '<span style="display:flex;align-items:center;gap:8px">'
+          + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + '"></span>'
+          + '<span style="color:var(--fg-bright)">' + o.label + '</span>'
+          + '</span>'
+          + '<span style="color:' + badgeColor + ';font-size:10px;text-transform:uppercase;letter-spacing:.5px">' + badgeText + '</span>'
+          + '</div>';
+      });
+      pop.innerHTML = html;
+      pop.querySelectorAll('[data-wid]').forEach(function(row){
+        row.addEventListener('mouseenter', function(){ row.style.background = 'var(--hover)'; });
+        row.addEventListener('mouseleave', function(){ row.style.background = 'transparent'; });
+        row.addEventListener('click', function(){
+          pop.style.display = 'none';
+          const wid = row.getAttribute('data-wid');
+          const installed = row.getAttribute('data-installed') === '1';
+          const url = row.getAttribute('data-url');
+          if (wid !== 'unisat' || !installed){
+            window.open(url, '_blank', 'noopener');
+            return;
+          }
+          btn.__btxBypass = true;
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          btn.__btxBypass = false;
+        });
+      });
+    }
+
+    btn.addEventListener('click', function(e){
+      if (btn.__btxBypass) return;
+      if (btn.textContent.length > 12 && btn.textContent.indexOf('Connect') === -1) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      render();
+      pop.style.display = (pop.style.display === 'block' ? 'none' : 'block');
+    }, true);
+
+    document.addEventListener('mousedown', function(e){
+      if (!wrap.contains(e.target)) pop.style.display = 'none';
+    });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') pop.style.display = 'none'; });
+  })();
+</script>
 
 
 
