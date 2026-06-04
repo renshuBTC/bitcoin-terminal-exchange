@@ -1,8 +1,10 @@
+'use client';
 /**
- * Stats header strip — pair selector + key metrics.
- * Matches btx_trade.html's .stats block (lines 347–380).
+ * Stats header. The "Wallet" metric now reflects the connected wallet's
+ * confirmed balance when one is connected.
  */
 import type { Btx2Health } from '@/lib/api';
+import { useWallet } from './WalletProvider';
 
 interface StatsHeaderProps {
   pair?: string;
@@ -10,8 +12,14 @@ interface StatsHeaderProps {
   lastSats?: string;
   health?: Btx2Health | null;
   volume24h?: string;
-  walletBtc?: string;
   streamHash?: string;
+}
+
+function fmtBtc(sats: number): string {
+  return (sats / 1e8).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  });
 }
 
 export function StatsHeader({
@@ -20,11 +28,13 @@ export function StatsHeader({
   lastSats = '—',
   health,
   volume24h = '—',
-  walletBtc = '0.00000',
   streamHash = '—',
 }: StatsHeaderProps) {
+  const { connected, balanceSats } = useWallet();
   const tipHeight = health?.tip_height ?? 0;
   const streamShort = streamHash === '—' ? '—' : `${streamHash.slice(0, 8)}…`;
+  const walletText = balanceSats !== null ? fmtBtc(balanceSats) : '0.00000';
+
   return (
     <div className="flex items-center gap-6 px-4 py-2.5 bg-bg border-b border-border overflow-x-auto">
       <div className="flex items-center gap-2.5 pr-5 border-r border-border">
@@ -36,8 +46,7 @@ export function StatsHeader({
         </span>
       </div>
       <Metric label="Mark">
-        <span className="text-dim text-[10px]">$</span>
-        {markPriceUsd}
+        <span className="text-dim text-[10px]">$</span>{markPriceUsd}
       </Metric>
       <Metric label="Last">
         {lastSats} <span className="text-dim text-[10px]">sats</span>
@@ -52,13 +61,11 @@ export function StatsHeader({
         {volume24h} <span className="text-dim text-[10px]">BTC</span>
       </Metric>
       <Metric label="Wallet" small>
-        <span className="text-green">
-          {walletBtc} <span className="text-dim text-[10px]">BTC</span>
+        <span className={connected ? 'text-green' : ''}>
+          {walletText} <span className="text-dim text-[10px]">BTC</span>
         </span>
       </Metric>
-      <Metric label="Stream Hash" small>
-        {streamShort}
-      </Metric>
+      <Metric label="Stream Hash" small>{streamShort}</Metric>
     </div>
   );
 }
@@ -74,12 +81,8 @@ function Metric({
 }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-max">
-      <span className="text-[10px] text-muted uppercase tracking-wider">
-        {label}
-      </span>
-      <span
-        className={`${small ? 'text-xs' : 'text-[13px]'} text-fg font-mono`}
-      >
+      <span className="text-[10px] text-muted uppercase tracking-wider">{label}</span>
+      <span className={`${small ? 'text-xs' : 'text-[13px]'} text-fg font-mono`}>
         {children}
       </span>
     </div>

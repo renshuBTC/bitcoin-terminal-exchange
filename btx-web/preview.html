@@ -325,5 +325,48 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
     select('chart');
   })();
 </script>
+<script>
+  // UniSat Connect button. Self-contained — only touches DOM, never holds keys.
+  (function(){
+    const btn = document.querySelector('.connectBtn');
+    if (!btn) return;
+    const u = window.unisat;
+    function setLabel(text){ btn.textContent = text; }
+    function fmtAddr(a){ return a.slice(0,6)+'…'+a.slice(-4); }
+    btn.addEventListener('click', async () => {
+      if (!u){
+        btn.title = 'UniSat extension not installed';
+        btn.textContent = 'install UniSat';
+        window.open('https://unisat.io/', '_blank', 'noopener');
+        return;
+      }
+      try {
+        btn.disabled = true; setLabel('connecting…');
+        const accounts = await u.requestAccounts();
+        const addr = accounts && accounts[0];
+        if (!addr) throw new Error('no account');
+        btn.style.background = 'var(--hover)';
+        btn.style.color = 'var(--fg-bright)';
+        btn.style.borderColor = 'var(--line-strong)';
+        setLabel(fmtAddr(addr));
+        btn.title = 'UniSat · click to forget';
+        // Light up the Wallet metric in stats strip
+        try {
+          const bal = await u.getBalance();
+          const walletV = document.querySelector('.stats .metric:nth-of-type(8) .v');
+          if (walletV) walletV.innerHTML = '<span style="color:var(--green)">' + (bal.confirmed/1e8).toFixed(5) + '</span> <span class="dim" style="font-size:10px">BTC</span>';
+        } catch {}
+      } catch (e) {
+        setLabel('Connect');
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
+</script>
+
 </body>
 </html>

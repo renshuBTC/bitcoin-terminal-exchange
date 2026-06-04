@@ -1,17 +1,16 @@
+'use client';
 /**
- * Top navigation bar — TradingView-minimal toolbar.
- * Matches btx_trade.html's .nav pattern (lines 327–344) with the
- * single-page consolidation applied: just BT[X] logo + Trade indicator
- * + Docs external link, then oracle/sync pills + Connect on the right.
+ * Top navigation bar. Hooks into WalletProvider so the Connect button
+ * actually opens the wallet, and so we display the short address +
+ * provider name after connecting.
  */
+import { useWallet } from './WalletProvider';
 
 interface TopNavProps {
   oracleStatus?: 'ok' | 'warn' | 'bad';
   syncStatus?: 'ok' | 'warn' | 'bad';
   oracleText?: string;
   syncText?: string;
-  walletConnected?: boolean;
-  walletLabel?: string;
 }
 
 export function TopNav({
@@ -19,15 +18,32 @@ export function TopNav({
   syncStatus = 'warn',
   oracleText = 'oracle · preview',
   syncText = 'sync 100%',
-  walletConnected = false,
-  walletLabel = 'Connect',
 }: TopNavProps) {
+  const { connected, connecting, error, connect, disconnect } = useWallet();
+
   const pillClass = (s: 'ok' | 'warn' | 'bad') => {
     const base =
       'inline-flex items-center bg-hover text-fg border h-7 px-2.5 rounded-sm text-[11px] uppercase tracking-wider leading-[26px]';
     if (s === 'ok') return `${base} border-[#2c5e57] text-green`;
     if (s === 'warn') return `${base} border-[#7a4b13] text-orange`;
     return `${base} border-[#5e2e34] text-red`;
+  };
+
+  const connectLabel = (() => {
+    if (connecting) return 'connecting…';
+    if (connected) {
+      const a = connected.address;
+      return `${a.slice(0, 6)}…${a.slice(-4)}`;
+    }
+    return 'Connect';
+  })();
+
+  const handleClick = async () => {
+    if (connected) {
+      await disconnect();
+    } else {
+      await connect();
+    }
   };
 
   return (
@@ -53,16 +69,31 @@ export function TopNav({
         </a>
       </div>
       <div className="ml-auto flex items-center gap-1.5">
+        {error && (
+          <span
+            className={pillClass('bad')}
+            title={error}
+          >
+            wallet error
+          </span>
+        )}
         <span className={pillClass(oracleStatus)}>{oracleText}</span>
         <span className={pillClass(syncStatus)}>{syncText}</span>
         <button
+          onClick={handleClick}
+          disabled={connecting}
+          title={
+            connected
+              ? `${connected.providerName} · ${connected.network} · click to disconnect`
+              : 'Connect a Bitcoin wallet (UniSat supported)'
+          }
           className={
-            walletConnected
-              ? 'bg-hover text-fg-bright border border-line-strong rounded-sm h-7 px-4 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer'
-              : 'bg-orange text-black border border-orange rounded-sm h-7 px-4 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer hover:bg-orange-bright hover:border-orange-bright'
+            connected
+              ? 'bg-hover text-fg-bright border border-line-strong rounded-sm h-7 px-3 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer hover:border-orange'
+              : 'bg-orange text-black border border-orange rounded-sm h-7 px-4 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer hover:bg-orange-bright hover:border-orange-bright disabled:opacity-60 disabled:cursor-default'
           }
         >
-          {walletLabel}
+          {connectLabel}
         </button>
       </div>
     </div>

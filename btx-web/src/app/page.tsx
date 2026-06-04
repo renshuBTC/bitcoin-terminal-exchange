@@ -2,7 +2,10 @@
  * The single trade page. Server-side fetches orderbook, stats, state
  * root, and health from the BTX API, then renders the three-column
  * trade layout from btx_trade.html on desktop and a tab-switched
- * single-column layout on mobile (via MainGrid client component).
+ * single-column layout on mobile.
+ *
+ * WalletProvider is mounted at the top so TopNav + StatsHeader can
+ * react to wallet connect events without prop-drilling.
  */
 import { api, type Btx2OrderView, type Btx2Health, type Btx2StateRoot } from '@/lib/api';
 import { TopNav } from '@/components/TopNav';
@@ -13,6 +16,7 @@ import { TradePanel } from '@/components/TradePanel';
 import { BottomTable } from '@/components/BottomTable';
 import { StatusBar } from '@/components/StatusBar';
 import { MainGrid } from '@/components/MainGrid';
+import { WalletProvider } from '@/components/WalletProvider';
 
 async function fetchPageData(): Promise<{
   orders: Btx2OrderView[];
@@ -35,7 +39,7 @@ export default async function HomePage() {
   const rootShort = stateRoot ? `${stateRoot.root_hex.slice(0, 6)}…` : '—';
 
   return (
-    <>
+    <WalletProvider>
       <TopNav />
       <StatsHeader health={health} streamHash={stateRoot?.root_hex} />
       <MainGrid
@@ -49,6 +53,6 @@ export default async function HomePage() {
         </div>
       </div>
       <StatusBar health={health} stateRoot={stateRoot} />
-    </>
+    </WalletProvider>
   );
 }
