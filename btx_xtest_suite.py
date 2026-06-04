@@ -194,6 +194,16 @@ SUB_TESTS = [
         "Bitcoin CoreX/bitcoin-bips-reference/bip-0327/vectors/nonce_gen_vectors.json",
     ),
     (
+        "BIP-327 MuSig2 sign_verify + sig_agg vectors (Phase 2 of refactor)",
+        "btx_xtest_vs_bip327_sign_verify.py",
+        "Bitcoin CoreX/bitcoin-bips-reference/bip-0327/vectors/sign_verify_vectors.json",
+    ),
+    (
+        "BIP-327 MuSig2 tweak + det_sign vectors (Phase 3 — all 8 vector files covered)",
+        "btx_xtest_vs_bip327_tweak_det.py",
+        "Bitcoin CoreX/bitcoin-bips-reference/bip-0327/vectors/tweak_vectors.json",
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself

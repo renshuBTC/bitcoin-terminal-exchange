@@ -123,14 +123,52 @@ def nonce_agg(pubnonces: List[bytes]) -> bytes:
     return _bip327.nonce_agg(pubnonces)
 
 
-# Re-export the exception type so callers can catch it without
-# touching the underlying reference module.
+# --------------------------- session signing ---------------------------
+
+
+def session_context(aggnonce, pubkeys, tweaks, is_xonly, msg):
+    """Construct SessionContext for sign/partial_sig_verify/partial_sig_agg.
+    aggnonce: 66-byte nonce_agg output. pubkeys: list of 33-byte compressed
+    pubkeys. tweaks/is_xonly: pass [] for no tweaks. msg: signed message bytes."""
+    return _bip327.SessionContext(aggnonce, pubkeys, tweaks, is_xonly, msg)
+
+
+def sign(secnonce, sk, session_ctx):
+    """Produce 32-byte partial signature. secnonce is wiped after to prevent reuse."""
+    return _bip327.sign(secnonce, sk, session_ctx)
+
+
+def partial_sig_verify(psig, pubnonces, pubkeys, tweaks, is_xonly, msg, i):
+    """Verify partial signature from signer index `i`. Returns True/False."""
+    return _bip327.partial_sig_verify(psig, pubnonces, pubkeys, tweaks, is_xonly, msg, i)
+
+
+def partial_sig_agg(psigs, session_ctx):
+    """Combine partials into final 64-byte BIP-340 signature."""
+    return _bip327.partial_sig_agg(psigs, session_ctx)
+
+
+# Re-export the exception type
 InvalidContributionError = _bip327.InvalidContributionError
 
 
 __all__ = [
-    "nonce_gen_internal",
-    "nonce_gen",
-    "nonce_agg",
+    "nonce_gen_internal", "nonce_gen", "nonce_agg",
+    "session_context", "sign", "partial_sig_verify", "partial_sig_agg",
     "InvalidContributionError",
 ]
+
+
+def deterministic_sign(sk, aggothernonce, pubkeys, tweaks, is_xonly, msg, rand=None):
+    """Deterministic single-signer signing path (BIP-327 §Det. Signing).
+
+    Used when a signer wants signing to be reproducible from inputs alone
+    (no need to persist a per-session secret nonce). The signer picks an
+    `aggothernonce` from the coordinator, optional `rand`, and produces
+    (pubnonce, psig) atomically."""
+    return _bip327.deterministic_sign(
+        sk, aggothernonce, pubkeys, tweaks, is_xonly, msg, rand
+    )
+
+
+__all__ = __all__ + ["deterministic_sign"]
