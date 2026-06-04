@@ -10,6 +10,8 @@
  * Click-outside dismisses the popover; Escape dismisses too.
  */
 import { useEffect, useRef, useState } from 'react';
+
+import { EXPECTED_NETWORK } from '@/lib/network';
 import { useWallet } from './WalletProvider';
 
 interface WalletOption {
@@ -106,6 +108,17 @@ export function WalletPickerButton() {
     }
   };
 
+  // Network chip color: green when wallet matches the expected
+  // network for this deployment; red when it doesn't. Hidden when
+  // disconnected.
+  const networkMismatch =
+    !!connected && connected.network !== EXPECTED_NETWORK;
+  const networkChipClass = !connected
+    ? ''
+    : networkMismatch
+      ? 'ml-1.5 inline-block text-[9px] uppercase tracking-wider border border-red text-red rounded-sm px-1 leading-[14px]'
+      : 'ml-1.5 inline-block text-[9px] uppercase tracking-wider border border-green text-green rounded-sm px-1 leading-[14px]';
+
   return (
     <div ref={popRef} className="relative inline-block">
       <button
@@ -122,7 +135,10 @@ export function WalletPickerButton() {
             : 'bg-orange text-black border border-orange rounded-sm h-7 px-4 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer hover:bg-orange-bright hover:border-orange-bright disabled:opacity-60 disabled:cursor-default'
         }
       >
-        {connectLabel}
+        <span>{connectLabel}</span>
+        {connected && (
+          <span className={networkChipClass}>{connected.network}</span>
+        )}
       </button>
 
       {open && !connected && (

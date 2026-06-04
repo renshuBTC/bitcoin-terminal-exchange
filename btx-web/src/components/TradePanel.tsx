@@ -15,6 +15,7 @@ import {
   appendAttestation,
   emitAttestationsChanged,
 } from '@/lib/attestations';
+import { EXPECTED_NETWORK } from '@/lib/network';
 import { unisatWallet } from '@/lib/wallets/unisat';
 import { SelectedOrderDetail } from './SelectedOrderDetail';
 import { useSelectedOrder } from './SelectedOrderProvider';
@@ -94,6 +95,13 @@ export function TradePanel() {
 
   const fill = async () => {
     setFillResult(null);
+    if (connected && connected.network !== EXPECTED_NETWORK) {
+      setFillResult({
+        ok: false,
+        text: `wallet network '${connected.network}' does not match deployment '${EXPECTED_NETWORK}'. Switch your wallet's network and retry.`,
+      });
+      return;
+    }
     if (!connected) {
       try { await connect(); } catch (e) {
         setFillResult({ ok: false, text: e instanceof Error ? e.message : 'connect failed' });
@@ -140,6 +148,13 @@ export function TradePanel() {
 
   const publish = async () => {
     setResult(null);
+    if (connected && connected.network !== EXPECTED_NETWORK) {
+      setResult({
+        ok: false,
+        text: `wallet network '${connected.network}' does not match deployment '${EXPECTED_NETWORK}'. Switch your wallet's network and retry.`,
+      });
+      return;
+    }
     if (!connected) {
       try {
         await connect();
@@ -210,6 +225,13 @@ export function TradePanel() {
         <TabBtn on={tab === 'fill'} onClick={() => setTab('fill')}>Fill</TabBtn>
         <TabBtn on={tab === 'otc'} onClick={() => setTab('otc')}>OTC</TabBtn>
       </div>
+
+      {connected && connected.network !== EXPECTED_NETWORK && (
+        <NetworkMismatchBanner
+          walletNetwork={connected.network}
+          expected={EXPECTED_NETWORK}
+        />
+      )}
 
       {tab === 'publish' && (
         <>
@@ -403,6 +425,36 @@ function PStat({ label, value, suffix }: { label: string; value: string; suffix?
     <div className="flex justify-between gap-2">
       <span className="text-muted uppercase tracking-wider text-[10px]">{label}</span>
       <span className="text-fg font-mono text-right">{value} {suffix && <span className="text-dim">{suffix}</span>}</span>
+    </div>
+  );
+}
+
+/**
+ * Loud red banner shown above the Publish/Fill controls when the
+ * connected wallet reports a network other than the one this btx-web
+ * deployment is targeting. Publish + Fill are gated on the same
+ * predicate — even if a user dismisses the banner mentally, the
+ * sign call exits early with the same message.
+ */
+function NetworkMismatchBanner({
+  walletNetwork,
+  expected,
+}: {
+  walletNetwork: string;
+  expected: string;
+}) {
+  return (
+    <div className="text-[11px] mb-3 p-2 px-2.5 rounded-sm border border-red bg-[#1a0e0e] text-red font-mono leading-snug">
+      <div className="font-bold uppercase tracking-wider text-[10px] mb-1">
+        Network mismatch · sign disabled
+      </div>
+      <div className="break-all">
+        Wallet reports <span className="text-fg-bright">{walletNetwork}</span>{' '}
+        but this site is rendering{' '}
+        <span className="text-fg-bright">{expected}</span> orders. Switch your
+        wallet&rsquo;s network to {expected} (or load the {walletNetwork}{' '}
+        deployment) before signing.
+      </div>
     </div>
   );
 }
