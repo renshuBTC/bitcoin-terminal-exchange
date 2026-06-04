@@ -1,9 +1,14 @@
 'use client';
 /**
- * Stats header. The "Wallet" metric now reflects the connected wallet's
- * confirmed balance when one is connected.
+ * Stats header. The "Wallet" metric reflects the connected wallet's
+ * confirmed balance when one is connected. The "Mark" metric auto-
+ * fetches the latest BRK price_close (USD) when no markPriceUsd prop
+ * is supplied — so the value stays current even when the server-side
+ * fetch in page.tsx is stale.
  */
-import type { Btx2Health } from '@/lib/api';
+import { useEffect, useState } from 'react';
+
+import { api, type Btx2Health } from '@/lib/api';
 import { useWallet } from './WalletProvider';
 
 interface StatsHeaderProps {
@@ -22,6 +27,18 @@ function fmtBtc(sats: number): string {
   });
 }
 
+/**
+ * Format a USD price for the Mark pill. Uses comma-grouping with two
+ * decimals to match the spot-price visual of the installed BTX, and
+ * keeps the leading "$" outside (rendered by the caller as a dim glyph).
+ */
+function formatUsd(v: number): string {
+  return v.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function StatsHeader({
   pair = 'USDH / BTC',
   markPriceUsd = '—',
@@ -35,6 +52,31 @@ export function StatsHeader({
   const streamShort = streamHash === '—' ? '—' : `${streamHash.slice(0, 8)}…`;
   const walletText = balanceSats !== null ? fmtBtc(balanceSats) : '0.00000';
 
+  // Live BTC mark fetch — only runs when the prop is absent or '—'.
+  // The cancellation flag lets the page unmount cleanly mid-fetch.
+  const [liveMark, setLiveMark] = useState<number | null>(null);
+  useEffect(() => {
+    if (markPriceUsd && markPriceUsd !== '—') return;
+    let cancelled = false;
+    api
+      .priceCloseLatest()
+      .then((v) => {
+        if (!cancelled) setLiveMark(v);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveMark(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [markPriceUsd]);
+  const markText =
+    markPriceUsd && markPriceUsd !== '—'
+      ? markPriceUsd
+      : liveMark !== null
+        ? formatUsd(liveMark)
+        : '—';
+
   return (
     <div className="flex items-center gap-6 px-4 py-2.5 bg-bg border-b border-border overflow-x-auto">
       <div className="flex items-center gap-2.5 pr-5 border-r border-border">
@@ -46,7 +88,8 @@ export function StatsHeader({
         </span>
       </div>
       <Metric label="Mark">
-        <span className="text-dim text-[10px]">$</span>{markPriceUsd}
+        <span className="text-dim text-[10px]">$</span>
+        {markText}
       </Metric>
       <Metric label="Last">
         {lastSats} <span className="text-dim text-[10px]">sats</span>

@@ -90,6 +90,34 @@ export interface Btx2PricePoint {
 
 export const api = {
   /**
+   * Most recent BRK price_close value (single number, USD).
+   *
+   * Endpoint: `GET /api/series/price_close/day1/latest`
+   * Response: a bare JSON number (no envelope), per the latest
+   *   handler at `crates/brk_server/src/api/series.rs:299-322`.
+   *
+   * Throws on non-2xx, non-numeric body, or NaN/Infinity so the
+   * caller can fall back silently. Used by StatsHeader for the
+   * "Mark" pill and by anything else that needs a single spot price.
+   */
+  priceCloseLatest: async (): Promise<number> => {
+    const res = await fetch(
+      `${API_BASE}/api/series/price_close/day1/latest`,
+      { headers: { Accept: 'application/json' }, next: { revalidate: 30 } },
+    );
+    if (!res.ok) {
+      throw new Error(
+        `price_close_latest failed: ${res.status} ${res.statusText}`,
+      );
+    }
+    const raw = (await res.json()) as unknown;
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+      throw new Error('price_close_latest: non-numeric body');
+    }
+    return raw;
+  },
+
+  /**
    * BRK daily-close USD series. Returns up to `limit` most-recent points.
    * Throws on non-2xx, empty body, or non-numeric items so callers can
    * fall back to a placeholder cleanly.
