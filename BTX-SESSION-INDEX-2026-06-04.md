@@ -1,18 +1,40 @@
 # BTX 2026-06-04 session — navigable index
 
-A single document indexing 12 external scouts + 4 BTX-side engineering
-tasks shipped this session, with operational rules codified for future
-sessions.
+A single document indexing the session's work across **two repos**:
+12 external scouts + 4 BTX-side engineering tasks in `bitcoin-terminal-
+exchange` plus 2 cross-repo ports to `brk-btx` (the Rust indexer side).
 
 ## Quick stats
 
-- **24 commits pushed** to `bitcoin-terminal-exchange/main`
+- **29 commits pushed total** across two repos:
+  - **27 commits** to `bitcoin-terminal-exchange/main`
+  - **2 commits** to `brk-btx/main` (the cross-repo BIP-322 SIGHASH_ALL
+    port + wiring-sanity test)
 - **12 external scouts** (cross-validation oracles)
-- **4 BTX-side engineering tasks** (Sparrow/Trezor interop + all 8
-  BIP-327 vector files)
-- **Suite: 12 → 28 sub-tests**
+- **4 BTX-side engineering tasks** in bitcoin-terminal-exchange
+- **2 cross-repo brk-btx ports** completing end-to-end SIGHASH_ALL
+  interop top-to-bottom
+- **Python suite: 12 → 28 sub-tests**
+- **brk-btx Rust tests: +3 (2 raw-layer + 1 wiring-sanity)**
 - **Bookmark-accuracy this session: 1 of 7 = 14%** — the dominant
-  operational lesson
+  operational lesson, reinforced across multiple deferrals
+
+## End-to-end SIGHASH_ALL interop (cross-repo)
+
+The single largest cross-repo win this session:
+
+| Layer | bitcoin-terminal-exchange (Python) | brk-btx (Rust) |
+| ----- | ---------------------------------- | -------------- |
+| Raw BIP-322 verifier | `btx_bip322.verify_simple_p2tr` (`00d2468`) | `btx_bip322::verify_simple_p2tr` (`a90403d`) |
+| Indexer wrapper | (n/a — userland) | `btx_v2_verify::verify_attestation_simple` (`e2e99ba` test) |
+| Unit-test coverage | `btx_xtest_vs_bip322_js_sighash_all.py` (20/20) | 2 raw-layer + 1 wiring-sanity |
+
+Sparrow Wallet, Trezor Suite, BlueWallet, Exodus, and any bip322-js
+downstream now interoperate with BTX's BIP-322 attestation stack
+top-to-bottom. Before this session, the brk-btx indexer would have
+silently rejected any SIGHASH_ALL attestation envelope, breaking
+real-world maker-registration for wallets that don't default to
+SIGHASH_DEFAULT.
 
 ## Index by commit
 
@@ -40,6 +62,15 @@ sessions.
 | `3519bfe` | **Task B Phases 2+3**: sign_verify + sig_agg + tweak + det_sign |
 | `cd0b68d` | Task C: BIP-322 NONE/SINGLE probe (correctly deferred) |
 | `b00e262` + `fab0663` | btx_bip322 mount-lag tail repairs |
+| `36ec9e8` | Session index doc (THIS DOC, first version) |
+| `8e6e0ed` | Suite parallelization opt-in flag |
+
+### Cross-repo commits to brk-btx
+
+| Commit | Title |
+| ------ | ----- |
+| `a90403d` | brk-btx: btx_bip322.rs accepts SIGHASH_ALL + bare-base64 |
+| `e2e99ba` | brk-btx: btx_v2_verify wiring-sanity test for SIGHASH_ALL flow-through |
 
 ## Final suite state — 28 sub-tests
 
