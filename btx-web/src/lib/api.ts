@@ -149,6 +149,37 @@ export interface Btx2AddressStats {
   };
 }
 
+/**
+ * Structural fill-tx draft. Returned by GET /api/v1/btx2/orders/{id}/fill_draft
+ * (brk-btx commit D). Mirrors the server-side Btx2FillDraft JsonSchema in
+ * crates/brk_query/src/impl/btx2.rs.
+ *
+ * Gives the taker's wallet everything it needs to assemble a signable
+ * PSBT against this maker order, but stops short of inventing taker-side
+ * fields (funding UTXOs, change output, fee rate).
+ */
+export interface Btx2FillDraft {
+  id_hex: string;
+  state: 'Open' | 'Conditional' | 'Filled' | 'Cancelled' | 'Expired';
+  expiry: number;
+  /** Maker offer UTXO as "txid:vout". Include as input 0; do NOT sign. */
+  offer_input: string;
+  /** Script-pubkey of the rune payout output, hex-encoded. */
+  maker_payout_spk_hex: string;
+  /** 32-byte x-only maker pubkey, hex. */
+  maker_pubkey_hex: string;
+  /** Quantity of rune base units. */
+  amount: number;
+  /** Sats per rune unit. */
+  price: number;
+  /** Total sats the taker pays (amount × price, saturating). */
+  total_sats: number;
+  rune_block: number;
+  rune_tx: number;
+  /** Sighash flag the maker pre-signed with. 131 = SIGHASH_SINGLE|ANYONECANPAY. */
+  sighash_flag_for_offer_input: number;
+}
+
 export const api = {
   /**
    * Most recent BRK price_close value (single number, USD).
@@ -250,6 +281,21 @@ export const api = {
    */
   orderBody: (id: string) =>
     get<string | null>(`/api/v1/btx2/orders/${id}/body`),
+
+  /**
+   * Structural fill-tx draft for a maker order. Returns the data the
+   * taker's wallet needs to construct a signable PSBT (offer outpoint,
+   * payout SPK, amount, price, sighash flag) but NOT a finished PSBT —
+   * funding UTXOs / change / fee rate are wallet-side concerns.
+   *
+   * Endpoint (added 2026-06-04 in brk-btx):
+   *   GET /api/v1/btx2/orders/{id_hex}/fill_draft  →  Btx2FillDraft | null
+   *
+   * Null when the id doesn't parse, isn't in the store, or is in a
+   * terminal state (Filled / Cancelled / Expired).
+   */
+  fillDraft: (id: string) =>
+    get<Btx2FillDraft | null>(`/api/v1/btx2/orders/${id}/fill_draft`),
   conditional: () => get<Btx2OrderView[]>('/api/v1/btx2/conditional'),
   filled: () => get<Btx2OrderView[]>('/api/v1/btx2/filled'),
   cancelled: () => get<Btx2OrderView[]>('/api/v1/btx2/cancelled'),

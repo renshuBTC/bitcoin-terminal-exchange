@@ -11,6 +11,7 @@
  * later commit; today's deliverable is the wallet signing roundtrip.
  */
 import { useEffect, useState } from 'react';
+import { api, type Btx2FillDraft } from '@/lib/api';
 import {
   appendAttestation,
   emitAttestationsChanged,
@@ -92,6 +93,41 @@ export function TradePanel() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce]);
+
+  // Auto-fetch the structural fill draft when the artifact input
+  // looks like a 72-char hex order id. Lets the user preview what
+  // their fill will commit to (offer outpoint, payout SPK, total
+  // sats, sighash flag) before signing or building a PSBT.
+  const [fillDraft, setFillDraft] = useState<Btx2FillDraft | null>(null);
+  const [fillDraftErr, setFillDraftErr] = useState<string | null>(null);
+  useEffect(() => {
+    const v = fillArtifact.trim();
+    setFillDraftErr(null);
+    if (!/^[0-9a-fA-F]{72}$/.test(v)) {
+      setFillDraft(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .fillDraft(v)
+      .then((d) => {
+        if (cancelled) return;
+        if (d === null) {
+          setFillDraft(null);
+          setFillDraftErr('order not in store or already terminal');
+        } else {
+          setFillDraft(d);
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setFillDraft(null);
+        setFillDraftErr(e instanceof Error ? e.message : 'fetch failed');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fillArtifact]);
 
   const fill = async () => {
     setFillResult(null);
@@ -301,6 +337,12 @@ export function TradePanel() {
       {tab === 'fill' && (
         <>
           <SelectedOrderDetail />
+          {fillDraft && <FillDraftPanel draft={fillDraft} />}
+          {fillDraftErr && (
+            <div className="text-[10px] text-red mt-1 mb-1 font-mono">
+              · fill-draft: {fillDraftErr}
+            </div>
+          )}
           <Label>Order artifact / id (click a book row to load)</Label>
           <Input
             placeholder="BTX2 artifact hex or 36-byte order id"
@@ -425,6 +467,83 @@ function PStat({ label, value, suffix }: { label: string; value: string; suffix?
     <div className="flex justify-between gap-2">
       <span className="text-muted uppercase tracking-wider text-[10px]">{label}</span>
       <span className="text-fg font-mono text-right">{value} {suffix && <span className="text-dim">{suffix}</span>}</span>
+    </div>
+  );
+}
+
+/**
+ * Structural fill-tx draft — what GET /api/v1/btx2/orders/{id}/fill_draft
+ * gives the taker's wallet to assemble a signable PSBT. Rendered above
+ * the artifact input when the input is a recognizable 72-char hex id.
+ *
+ * This is INFORMATIONAL — clicking Fill still runs the BIP-322
+ * attestation flow (the protocol-level commitment). PSBT construction
+ * lives in the wallet / a future broadcast step.
+ */
+function FillDraftPanel({ draft }: { draft: Btx2FillDraft }) {
+  const sighashName =
+    draft.sighash_flag_for_offer_input === 0x83
+      ? 'SIGHASH_SINGLE|ACP'
+      : `0x${draft.sighash_flag_for_offer_input.toString(16)}`;
+  return (
+    <div className="mt-2 mb-2 border border-border-soft rounded-sm bg-panel p-2 font-mono text-[11px]">
+      <div className="flex justify-between items-baseline mb-1">
+        <span className="text-[10px] uppercase tracking-wider text-muted">
+          Fill draft · structural
+        </span>
+        <span className="text-[10px] text-dim normal-case tracking-normal">
+          state: {draft.state}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+        <DraftRow label="Pay">
+          <span className="text-fg-bright">
+            {draft.total_sats.toLocaleString()} sats
+          </span>
+          <span className="text-dim">
+            {' '}
+            ({draft.amount.toLocaleString()} × {draft.price.toLocaleString()})
+          </span>
+        </DraftRow>
+        <DraftRow label="Rune">
+          <span className="text-fg-bright">
+            {draft.rune_block}:{draft.rune_tx}
+          </span>
+        </DraftRow>
+        <DraftRow label="Offer in">
+          <span className="text-fg text-[10px] break-all">
+            {draft.offer_input}
+          </span>
+        </DraftRow>
+        <DraftRow label="Expiry">
+          <span>{draft.expiry.toLocaleString()}</span>
+        </DraftRow>
+        <DraftRow label="Payout SPK">
+          <span className="text-fg text-[10px] break-all">
+            {draft.maker_payout_spk_hex.slice(0, 18)}…
+          </span>
+        </DraftRow>
+        <DraftRow label="Sighash">
+          <span className="text-orange">{sighashName}</span>
+        </DraftRow>
+      </div>
+    </div>
+  );
+}
+
+function DraftRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex justify-between items-baseline gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-muted shrink-0">
+        {label}
+      </span>
+      <span className="text-right">{children}</span>
     </div>
   );
 }
