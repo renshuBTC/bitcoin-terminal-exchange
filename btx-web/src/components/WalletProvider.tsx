@@ -52,6 +52,22 @@ interface WalletState {
    * callers can pass 'ecdsa' for the legacy path if needed.
    */
   signMessage: (message: string, type?: 'bip322' | 'ecdsa') => Promise<string>;
+  /**
+   * Sign a base64-encoded PSBT using whichever adapter is currently
+   * connected. Throws when no adapter is connected. `opts.signInputs`
+   * is the array of input indexes the connected wallet should sign;
+   * `opts.finalize` asks the wallet to also finalize after signing
+   * (most wallets return base64 either way).
+   *
+   * Reserved for the future broadcast flow — no UI calls this yet.
+   * Implemented now so that whenever a PSBT signing surface lands,
+   * it inherits the dispatch correctly (avoids the signMessage
+   * unisat-hardcode bug we just fixed).
+   */
+  signPsbt: (
+    psbtBase64: string,
+    opts: { signInputs: number[]; finalize: boolean },
+  ) => Promise<string>;
 }
 
 const Ctx = createContext<WalletState | null>(null);
@@ -172,6 +188,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const signPsbt = useCallback(
+    async (
+      psbtBase64: string,
+      opts: { signInputs: number[]; finalize: boolean },
+    ): Promise<string> => {
+      const id = activeAdapterRef.current;
+      if (!id) {
+        throw new Error('No wallet connected. Click Connect first.');
+      }
+      return ADAPTERS[id].signPsbt(psbtBase64, opts);
+    },
+    [],
+  );
+
   return (
     <Ctx.Provider
       value={{
@@ -182,6 +212,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         connect,
         disconnect,
         signMessage,
+        signPsbt,
       }}
     >
       {children}
@@ -205,6 +236,9 @@ export function useWallet(): WalletState {
       },
       async disconnect() {},
       async signMessage() {
+        throw new Error('useWallet called outside WalletProvider');
+      },
+      async signPsbt() {
         throw new Error('useWallet called outside WalletProvider');
       },
     };
