@@ -5,6 +5,7 @@
  * provider name after connecting.
  */
 import { useWallet } from './WalletProvider';
+import { WalletPickerButton } from './WalletPicker';
 
 interface TopNavProps {
   oracleStatus?: 'ok' | 'warn' | 'bad';
@@ -19,7 +20,7 @@ export function TopNav({
   oracleText = 'oracle · preview',
   syncText = 'sync 100%',
 }: TopNavProps) {
-  const { connected, connecting, error, connect, disconnect } = useWallet();
+  const { error } = useWallet();
 
   const pillClass = (s: 'ok' | 'warn' | 'bad') => {
     const base =
@@ -27,23 +28,6 @@ export function TopNav({
     if (s === 'ok') return `${base} border-[#2c5e57] text-green`;
     if (s === 'warn') return `${base} border-[#7a4b13] text-orange`;
     return `${base} border-[#5e2e34] text-red`;
-  };
-
-  const connectLabel = (() => {
-    if (connecting) return 'connecting…';
-    if (connected) {
-      const a = connected.address;
-      return `${a.slice(0, 6)}…${a.slice(-4)}`;
-    }
-    return 'Connect';
-  })();
-
-  const handleClick = async () => {
-    if (connected) {
-      await disconnect();
-    } else {
-      await connect();
-    }
   };
 
   return (
@@ -79,22 +63,7 @@ export function TopNav({
         )}
         <span className={pillClass(oracleStatus)}>{oracleText}</span>
         <span className={pillClass(syncStatus)}>{syncText}</span>
-        <button
-          onClick={handleClick}
-          disabled={connecting}
-          title={
-            connected
-              ? `${connected.providerName} · ${connected.network} · click to disconnect`
-              : 'Connect a Bitcoin wallet (UniSat supported)'
-          }
-          className={
-            connected
-              ? 'bg-hover text-fg-bright border border-line-strong rounded-sm h-7 px-3 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer hover:border-orange'
-              : 'bg-orange text-black border border-orange rounded-sm h-7 px-4 font-mono text-xs font-bold uppercase tracking-wider leading-[26px] cursor-pointer hover:bg-orange-bright hover:border-orange-bright disabled:opacity-60 disabled:cursor-default'
-          }
-        >
-          {connectLabel}
-        </button>
+        <WalletPickerButton />
       </div>
     </div>
   );
