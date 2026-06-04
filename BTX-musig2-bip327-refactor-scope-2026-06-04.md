@@ -1,6 +1,14 @@
 # Scope: btx_musig2 BIP-327 inner-function exposure
 
-Engineering decision: **deferred to a dedicated session.**
+> **SUPERSEDED 2026-06-04 by commits `8c8a45f` + `3519bfe`.** The
+> deferral below was overruled within the same session. All 8 BIP-327
+> vector files are now covered via the wrapper-then-cross-test pattern
+> (`btx_musig2_bip327_protocol.py` + 3 cross-test files). The "300-400
+> LOC + state machine + 2-3 sessions" estimate proved overly cautious;
+> actual ship was ~675 LOC total. This doc is retained for historical
+> context only — do not act on the deferral plan below.
+
+Engineering decision (HISTORICAL): **deferred to a dedicated session.**
 
 ## Background
 
@@ -102,13 +110,4 @@ output. Suite now at 25 sub-tests.
 
 | Slot                          | Status        |
 | ----------------------------- | ------------- |
-| BIP-322 SIGHASH_ALL verify    | **CLOSED**    |
-| BIP-322 SIGHASH_NONE/SINGLE   | open (low priority — rare in BIP-322 attestation) |
-| 6 of 8 BIP-327 vector files   | scope deferred (this doc) — Phase plan above |
-| Half-aggregation 2nd oracle   | genuinely blocked (no other implementation exists) |
-
-## Cross-links
-
-[[project-btx-scouts-25-27-2026-06-04]] — scout 27/28 results
-[[project-btx-bip322-js-scout-2026-06-04]] — scout 21 (original
-BIP-322 cross-test that this session's SIGHASH_ALL patch extends)
+| BIP-322 SIGHASH_ALL verify  
