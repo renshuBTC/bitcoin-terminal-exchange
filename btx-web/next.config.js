@@ -39,6 +39,28 @@ const nextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
           },
+          // Content-Security-Policy: only the directives that are
+          // unambiguous wins without breaking Next.js dev mode or the
+          // wallet extensions' page-injection model. Specifically:
+          //
+          //   frame-ancestors 'self' — modern equivalent of
+          //     X-Frame-Options: SAMEORIGIN. Browsers prefer CSP when
+          //     both are present.
+          //   form-action 'self'    — no form posts to external sites
+          //     (we don't have HTML forms, but defense-in-depth).
+          //   base-uri 'self'       — block <base href> injection
+          //     attacks that would redirect relative URLs.
+          //
+          // Deliberately NOT set:
+          //   script-src / style-src / connect-src — Next.js 14's app
+          //     router emits inline scripts with hashes that change
+          //     per build; restricting these without nonce wiring
+          //     leads to broken pages in dev mode. Wallet extensions
+          //     also inject scripts into the page origin.
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self'; form-action 'self'; base-uri 'self'",
+          },
         ],
       },
     ];

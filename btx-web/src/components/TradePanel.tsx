@@ -17,6 +17,7 @@ import {
   emitAttestationsChanged,
 } from '@/lib/attestations';
 import { EXPECTED_NETWORK } from '@/lib/network';
+import { buildFillPsbt } from '@/lib/psbt';
 import { SelectedOrderDetail } from './SelectedOrderDetail';
 import { useSelectedOrder } from './SelectedOrderProvider';
 import { useWallet } from './WalletProvider';
@@ -372,6 +373,7 @@ export function TradePanel() {
             taker funds + signs; the maker&rsquo;s pre-sig is dropped in; rune routes to your output.
           </div>
           {fillResult && <ResultStrip state={fillResult} />}
+          {fillDraft && <FillPsbtBuilder draft={fillDraft} />}
         </>
       )}
 
@@ -543,6 +545,177 @@ function DraftRow({
         {label}
       </span>
       <span className="text-right">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Taker-side fill PSBT builder. Renders below the fill draft preview
+ * in the Fill tab. Takes the structural fill draft + a small form
+ * (funding outpoint, funding value, change SPK, fee) and produces a
+ * base64 PSBT v0 the connected wallet can sign via signPsbt.
+ *
+ * IMPORTANT: the produced PSBT is taker-signed only. To broadcast,
+ * the maker's pre-sig (a SIGHASH_SINGLE|ACP signature over input 0)
+ * must be merged at input 0. That step lives outside this UI — the
+ * builder makes the explicit assertion below.
+ */
+function FillPsbtBuilder({ draft }: { draft: Btx2FillDraft }) {
+  const { connected, signPsbt } = useWallet();
+  const [funding, setFunding] = useState('');
+  const [fundingSatsStr, setFundingSatsStr] = useState('');
+  const [changeSpk, setChangeSpk] = useState('');
+  const [feeStr, setFeeStr] = useState('500');
+  const [state, setState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'built'; psbtBase64: string; changeSats: number }
+    | { kind: 'signing' }
+    | { kind: 'signed'; psbtBase64: string; changeSats: number }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+
+  const build = () => {
+    setState({ kind: 'idle' });
+    const fundingSats = Number(fundingSatsStr);
+    const fee = Number(feeStr);
+    if (!Number.isInteger(fundingSats) || fundingSats <= 0) {
+      setState({ kind: 'error', message: 'funding sats must be a positive integer' });
+      return;
+    }
+    if (!Number.isInteger(fee) || fee < 0) {
+      setState({ kind: 'error', message: 'fee must be a non-negative integer' });
+      return;
+    }
+    try {
+      const built = buildFillPsbt(draft, {
+        fundingOutpoint: funding.trim(),
+        fundingValueSats: fundingSats,
+        changeSpkHex: changeSpk.trim().toLowerCase(),
+        feeSats: fee,
+      });
+      setState({
+        kind: 'built',
+        psbtBase64: built.psbtBase64,
+        changeSats: built.changeSats,
+      });
+    } catch (e) {
+      setState({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'build failed',
+      });
+    }
+  };
+
+  const sign = async () => {
+    if (state.kind !== 'built') return;
+    if (!connected) {
+      setState({ kind: 'error', message: 'connect a wallet first' });
+      return;
+    }
+    setState({ kind: 'signing' });
+    try {
+      const signed = await signPsbt(state.psbtBase64, {
+        signInputs: [1],
+        finalize: false,
+      });
+      setState({
+        kind: 'signed',
+        psbtBase64: signed,
+        changeSats: state.changeSats,
+      });
+    } catch (e) {
+      setState({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'wallet declined / failed',
+      });
+    }
+  };
+
+  const result =
+    state.kind === 'built' || state.kind === 'signed'
+      ? state
+      : null;
+
+  return (
+    <div className="mt-3 border border-border-soft rounded-sm bg-panel p-2 font-mono text-[11px]">
+      <div className="flex justify-between items-baseline mb-1">
+        <span className="text-[10px] uppercase tracking-wider text-muted">
+          PSBT builder · taker side only
+        </span>
+        <span className="text-[10px] text-dim normal-case tracking-normal">
+          maker pre-sig merged at broadcast
+        </span>
+      </div>
+      <Label>Funding UTXO (txid:vout)</Label>
+      <Input
+        placeholder="abc…:0"
+        value={funding}
+        onChange={(e) => setFunding(e.target.value)}
+      />
+      <Label>Funding value (sats)</Label>
+      <Input
+        placeholder="e.g. 100000000"
+        value={fundingSatsStr}
+        onChange={(e) => setFundingSatsStr(e.target.value)}
+      />
+      <Label>Change SPK (hex)</Label>
+      <Input
+        placeholder="0014…20B P2WPKH SPK"
+        value={changeSpk}
+        onChange={(e) => setChangeSpk(e.target.value)}
+      />
+      <Label>Fee (sats)</Label>
+      <Input value={feeStr} onChange={(e) => setFeeStr(e.target.value)} />
+      <div className="flex gap-2 mt-2">
+        <button
+          type="button"
+          onClick={build}
+          className="flex-1 py-1.5 bg-transparent text-orange border border-orange rounded-sm font-mono text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-hover"
+        >
+          Build draft
+        </button>
+        <button
+          type="button"
+          onClick={sign}
+          disabled={state.kind !== 'built' || !connected}
+          className="flex-1 py-1.5 bg-orange text-black border border-orange rounded-sm font-mono text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-orange-bright hover:border-orange-bright disabled:opacity-50 disabled:cursor-default"
+        >
+          {state.kind === 'signing' ? 'signing…' : 'Wallet-sign input 1'}
+        </button>
+      </div>
+      {state.kind === 'error' && (
+        <div className="text-[10px] text-red mt-2 font-mono">
+          · {state.message}
+        </div>
+      )}
+      {result && (
+        <div className="mt-2 text-[10px] leading-snug break-all">
+          <div className="text-muted uppercase tracking-wider mb-0.5">
+            {state.kind === 'signed' ? 'Taker-signed PSBT' : 'Draft PSBT (unsigned)'}
+            <span className="text-dim normal-case tracking-normal">
+              {' '}
+              · change {result.changeSats.toLocaleString()} sats
+            </span>
+          </div>
+          <div
+            className={
+              state.kind === 'signed'
+                ? 'text-green border border-[#2c5e57] bg-[#0c1816] p-1.5 rounded-sm'
+                : 'text-fg border border-border-soft bg-bg p-1.5 rounded-sm'
+            }
+          >
+            {result.psbtBase64.slice(0, 80)}
+            <span className="text-dim">
+              … ({result.psbtBase64.length} chars)
+            </span>
+          </div>
+          <div className="text-[10px] text-dim mt-1">
+            NOT yet broadcastable. Maker pre-sig must be merged at input 0
+            (SIGHASH_SINGLE|ACP) before submitting via
+            POST /api/v1/btx2/broadcast.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
