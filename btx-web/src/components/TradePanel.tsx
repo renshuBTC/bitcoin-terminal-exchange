@@ -35,6 +35,32 @@ interface FormState {
 interface ResultState {
   ok: boolean;
   text: string;
+  /** When set, the result strip shows a copy button that puts this on the clipboard. */
+  copyable?: string;
+}
+
+/**
+ * Lightweight validation for the Fill artifact input. We accept either
+ *   (a) a hex string of at least 8 bytes (16 hex chars), OR
+ *   (b) the sample-row placeholder we generate from OrderBook clicks
+ *       (parens-wrapped, contains 'sample row').
+ * Returns an error string when invalid, null when OK.
+ */
+function validateFillArtifact(s: string): string | null {
+  const v = s.trim();
+  if (v.length === 0) return 'paste an order artifact / id first';
+  if (/sample row/i.test(v)) return null; // OrderBook sample placeholder
+  // Real artifacts / order ids are hex.
+  if (!/^[0-9a-fA-F]+$/.test(v)) {
+    return 'not hex — expected an order id or BTX2 artifact in hex';
+  }
+  if (v.length < 16) {
+    return `too short (${v.length} chars) — at least 16 hex chars`;
+  }
+  if (v.length % 2 !== 0) {
+    return 'odd hex length — bytes must be 2 hex chars each';
+  }
+  return null;
 }
 
 export function TradePanel() {
@@ -74,8 +100,9 @@ export function TradePanel() {
         return;
       }
     }
-    if (!fillArtifact.trim()) {
-      setFillResult({ ok: false, text: 'paste an order artifact / id first' });
+    const vErr = validateFillArtifact(fillArtifact);
+    if (vErr) {
+      setFillResult({ ok: false, text: vErr });
       return;
     }
     setFilling(true);
@@ -102,6 +129,7 @@ export function TradePanel() {
       setFillResult({
         ok: true,
         text: `BIP-322 fill-commitment OK\nsignature: ${signature.slice(0, 24)}…${signature.slice(-12)}`,
+        copyable: signature,
       });
     } catch (e) {
       setFillResult({ ok: false, text: e instanceof Error ? e.message : 'sign failed' });
@@ -155,6 +183,7 @@ export function TradePanel() {
       setResult({
         ok: true,
         text: `BIP-322 attestation OK\nsignature: ${signature.slice(0, 24)}…${signature.slice(-12)}`,
+        copyable: signature,
       });
     } catch (e) {
       setResult({
@@ -243,17 +272,7 @@ export function TradePanel() {
           <div className="text-[11px] text-muted leading-relaxed mt-2.5">
             self-custody · signs via your Bitcoin wallet · settles on-chain
           </div>
-          {result && (
-            <div
-              className={`text-[11px] mt-2.5 whitespace-pre-wrap break-all p-2 px-2.5 rounded-sm border font-mono ${
-                result.ok
-                  ? 'text-green border-[#2c5e57] bg-[#0c1816]'
-                  : 'text-red border-[#5e2e34] bg-[#1a0e0e]'
-              }`}
-            >
-              {result.text}
-            </div>
-          )}
+          {result && <ResultStrip state={result} />}
         </>
       )}
 
@@ -266,6 +285,19 @@ export function TradePanel() {
             value={fillArtifact}
             onChange={(e) => setFillArtifact(e.target.value)}
           />
+          {fillArtifact.trim().length > 0 &&
+            (() => {
+              const err = validateFillArtifact(fillArtifact);
+              return err ? (
+                <div className="text-[10px] text-red mt-1 font-mono">
+                  · {err}
+                </div>
+              ) : (
+                <div className="text-[10px] text-green mt-1 font-mono">
+                  · OK · {fillArtifact.trim().length} chars
+                </div>
+              );
+            })()}
           <button
             onClick={fill}
             disabled={filling}
@@ -276,11 +308,7 @@ export function TradePanel() {
           <div className="text-[11px] text-muted leading-relaxed mt-2.5">
             taker funds + signs; the maker&rsquo;s pre-sig is dropped in; rune routes to your output.
           </div>
-          {fillResult && (
-            <div className={`text-[11px] mt-2.5 whitespace-pre-wrap break-all p-2 px-2.5 rounded-sm border font-mono ${fillResult.ok ? 'text-green border-[#2c5e57] bg-[#0c1816]' : 'text-red border-[#5e2e34] bg-[#1a0e0e]'}`}>
-              {fillResult.text}
-            </div>
-          )}
+          {fillResult && <ResultStrip state={fillResult} />}
         </>
       )}
 
@@ -375,6 +403,60 @@ function PStat({ label, value, suffix }: { label: string; value: string; suffix?
     <div className="flex justify-between gap-2">
       <span className="text-muted uppercase tracking-wider text-[10px]">{label}</span>
       <span className="text-fg font-mono text-right">{value} {suffix && <span className="text-dim">{suffix}</span>}</span>
+    </div>
+  );
+}
+
+/**
+ * Coloured result strip with an inline copy button. The button uses
+ * navigator.clipboard.writeText when available and falls back to
+ * a hidden <textarea> + document.execCommand('copy') for older
+ * browsers / non-HTTPS contexts where the Clipboard API is blocked.
+ */
+function ResultStrip({ state }: { state: ResultState }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    if (!state.copyable) return;
+    try {
+      await navigator.clipboard.writeText(state.copyable);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Fallback for non-secure contexts.
+      const ta = document.createElement('textarea');
+      ta.value = state.copyable;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+  };
+  return (
+    <div
+      className={`text-[11px] mt-2.5 whitespace-pre-wrap break-all p-2 px-2.5 rounded-sm border font-mono ${
+        state.ok
+          ? 'text-green border-[#2c5e57] bg-[#0c1816]'
+          : 'text-red border-[#5e2e34] bg-[#1a0e0e]'
+      }`}
+    >
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex-1">{state.text}</div>
+        {state.copyable && (
+          <button
+            onClick={onCopy}
+            className="shrink-0 text-[10px] uppercase tracking-wider border border-current rounded-sm px-1.5 py-0.5 hover:bg-hover cursor-pointer"
+          >
+            {copied ? 'copied' : 'copy sig'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

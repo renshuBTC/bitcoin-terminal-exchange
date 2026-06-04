@@ -42,10 +42,11 @@ const SAMPLE_BIDS: BookRow[] = [
 
 export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
   const empty = orders.length === 0;
-  // Real depth-ladder derivation lives in a follow-up commit (needs
-  // price/amount fields on OrderView). For now: when we have real
-  // orders, render them as sample-shape rows keyed by id; when we
-  // don't, fall back to demo asks/bids.
+  // Btx2OrderView does NOT yet expose amount/price/side fields — only
+  // id_hex + state + maker_pubkey + offer_outpoint + heights. So even
+  // when we have real orders, the price/size columns are synthetic
+  // (deterministic-but-fake) placeholders keyed by id. The header
+  // honestly labels this until the backend OrderView is enriched.
   const asks: BookRow[] = empty
     ? SAMPLE_ASKS
     : orders.slice(0, 5).map((o, i) => ({
@@ -66,11 +67,24 @@ export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
         source: 'live',
         sourceId: o.id_hex,
       }));
+  // True when the columns are fabricated regardless of whether there
+  // are real orders behind them.
+  const fieldsSynthetic = true;
 
   return (
     <div className="bg-bg p-3.5 flex flex-col">
       <div className="m-0 mb-2.5 font-mono text-[11px] font-semibold text-muted uppercase tracking-wider flex justify-between items-baseline">
-        Order Book
+        <span className="flex items-baseline gap-2">
+          Order Book
+          {fieldsSynthetic && (
+            <span
+              title="Btx2OrderView does not yet expose amount/price/side. Columns are synthetic placeholders."
+              className="text-[9px] text-orange font-normal normal-case tracking-normal border border-orange rounded-sm px-1 cursor-help"
+            >
+              synthetic
+            </span>
+          )}
+        </span>
         <span className="text-[10px] text-dim font-normal normal-case tracking-normal">
           book {stateRootShort}
         </span>
