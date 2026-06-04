@@ -22,13 +22,14 @@ import {
   unisatRestore,
   unisatWallet,
 } from '@/lib/wallets/unisat';
+import { xverseInstalled, xverseWallet } from '@/lib/wallets/xverse';
 
 interface WalletState {
   connected: ConnectedWallet | null;
   balanceSats: number | null;
   connecting: boolean;
   error: string | null;
-  connect: () => Promise<void>;
+  connect: (adapter?: 'unisat' | 'xverse') => Promise<void>;
   disconnect: () => Promise<void>;
 }
 
@@ -55,10 +56,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (adapter: 'unisat' | 'xverse' = 'unisat') => {
     setConnecting(true);
     setError(null);
     try {
+      if (adapter === 'xverse') {
+        if (!xverseInstalled()) {
+          throw new Error(
+            'Xverse extension not installed. Install from https://www.xverse.app/ then refresh.',
+          );
+        }
+        const w = await xverseWallet.connect();
+        setConnected(w);
+        setBalanceSats(null); // Xverse balance fetched server-side later
+        return;
+      }
+      // default: unisat
       if (!unisatInstalled()) {
         throw new Error(
           'UniSat extension not installed. Install from https://unisat.io/ then refresh.',
@@ -101,7 +114,7 @@ export function useWallet(): WalletState {
       balanceSats: null,
       connecting: false,
       error: null,
-      async connect() {
+      async connect(_adapter?: 'unisat' | 'xverse') {
         throw new Error('useWallet called outside WalletProvider');
       },
       async disconnect() {},

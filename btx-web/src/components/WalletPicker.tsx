@@ -24,7 +24,7 @@ function detect(): WalletOption[] {
   if (typeof window === 'undefined') {
     return [
       { id: 'unisat', label: 'UniSat', installed: false, installUrl: 'https://unisat.io/', status: 'ready' },
-      { id: 'xverse', label: 'Xverse', installed: false, installUrl: 'https://www.xverse.app/', status: 'coming-soon' },
+      { id: 'xverse', label: 'Xverse', installed: false, installUrl: 'https://www.xverse.app/', status: 'ready' },
       { id: 'leather', label: 'Leather', installed: false, installUrl: 'https://leather.io/', status: 'coming-soon' },
       { id: 'okx', label: 'OKX Wallet', installed: false, installUrl: 'https://www.okx.com/web3', status: 'coming-soon' },
     ];
@@ -37,7 +37,7 @@ function detect(): WalletOption[] {
   };
   return [
     { id: 'unisat',  label: 'UniSat',     installed: !!w.unisat,                           installUrl: 'https://unisat.io/',         status: 'ready' },
-    { id: 'xverse',  label: 'Xverse',     installed: !!w.XverseProviders?.BitcoinProvider, installUrl: 'https://www.xverse.app/',    status: 'coming-soon' },
+    { id: 'xverse',  label: 'Xverse',     installed: !!w.XverseProviders?.BitcoinProvider, installUrl: 'https://www.xverse.app/',    status: 'ready' },
     { id: 'leather', label: 'Leather',    installed: !!w.LeatherProvider,                  installUrl: 'https://leather.io/',        status: 'coming-soon' },
     { id: 'okx',     label: 'OKX Wallet', installed: !!w.okxwallet?.bitcoin,               installUrl: 'https://www.okx.com/web3',   status: 'coming-soon' },
   ];
@@ -91,17 +91,16 @@ export function WalletPickerButton() {
 
   const onPick = async (opt: WalletOption) => {
     setOpen(false);
-    if (opt.id !== 'unisat') {
-      // Coming soon — open install/info page so the user has something
-      // to do, but no adapter to call yet.
-      window.open(opt.installUrl, '_blank', 'noopener');
-      return;
-    }
     if (!opt.installed) {
       window.open(opt.installUrl, '_blank', 'noopener');
       return;
     }
-    await connect();
+    if (opt.id === 'unisat' || opt.id === 'xverse') {
+      await connect(opt.id);
+      return;
+    }
+    // Leather / OKX adapters not yet implemented.
+    window.open(opt.installUrl, '_blank', 'noopener');
   };
 
   return (
