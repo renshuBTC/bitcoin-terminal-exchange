@@ -1,10 +1,8 @@
 /**
  * The single trade page. Server-side fetches orderbook, stats, state
  * root, and health from the BTX API, then renders the three-column
- * trade layout shown in btx_trade.html.
- *
- * Per BTX-single-page-decision-2026-06-04.md, the trade page is the
- * only page for both the website and the installer.
+ * trade layout from btx_trade.html on desktop and a tab-switched
+ * single-column layout on mobile (via MainGrid client component).
  */
 import { api, type Btx2OrderView, type Btx2Health, type Btx2StateRoot } from '@/lib/api';
 import { TopNav } from '@/components/TopNav';
@@ -14,6 +12,7 @@ import { OrderBook } from '@/components/OrderBook';
 import { TradePanel } from '@/components/TradePanel';
 import { BottomTable } from '@/components/BottomTable';
 import { StatusBar } from '@/components/StatusBar';
+import { MainGrid } from '@/components/MainGrid';
 
 async function fetchPageData(): Promise<{
   orders: Btx2OrderView[];
@@ -39,15 +38,16 @@ export default async function HomePage() {
     <>
       <TopNav />
       <StatsHeader health={health} streamHash={stateRoot?.root_hex} />
-      <main
-        className="grid gap-px bg-border min-h-[calc(100vh-130px-240px)]"
-        style={{ gridTemplateColumns: 'minmax(420px, 1.7fr) minmax(280px, 0.85fr) minmax(320px, 0.85fr)' }}
-      >
-        <Chart />
-        <OrderBook orders={orders} stateRootShort={rootShort} />
-        <TradePanel />
-      </main>
-      <BottomTable orders={orders} />
+      <MainGrid
+        chart={<Chart />}
+        book={<OrderBook orders={orders} stateRootShort={rootShort} />}
+        trade={<TradePanel />}
+      />
+      <div className="overflow-x-auto">
+        <div className="min-w-[760px]">
+          <BottomTable orders={orders} />
+        </div>
+      </div>
       <StatusBar health={health} stateRoot={stateRoot} />
     </>
   );

@@ -136,6 +136,31 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
 .statusbar .right{margin-left:auto; display:flex; gap:14px}
 .statusbar .right a{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px}
 .statusbar .right a:hover{color:var(--fg-bright); text-decoration:none}
+
+/* ===== MOBILE (< 900px) ===== */
+.mobile-tabs{display:none}
+@media (max-width: 900px){
+  .stats{gap:14px; padding:8px 10px}
+  .pairsel{padding-right:12px}
+  .pairsel .sym{font-size:15px}
+  .metric .v{font-size:12px}
+  main{display:block !important; min-height:auto !important; background:transparent !important}
+  .card[data-pane]{display:none; min-height:60vh}
+  .card[data-pane].on{display:flex}
+  .mobile-tabs{display:flex; gap:0; padding:0 12px; align-items:center; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:46px; z-index:4}
+  .mt-tab{color:var(--muted); cursor:pointer; padding:10px 0; margin-right:22px; font-family:var(--font-mono); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid transparent; margin-bottom:-1px}
+  .mt-tab.on{color:var(--orange); border-bottom-color:var(--orange)}
+  .bottom{overflow-x:auto}
+  .bottom table{min-width:760px}
+  .navlinks a{font-size:11px; padding:6px 8px}
+  .navright .pill{height:24px; line-height:22px; font-size:10px; padding:0 8px}
+  .connectBtn{height:24px; line-height:22px; padding:0 12px; font-size:11px}
+  .panel-modes,.tabs,.bs{font-size:11px}
+  .obrow{font-size:11px}
+}
+@media (max-width: 480px){
+  .stats .metric:nth-child(n+5){display:none}
+}
 </style>
 </head>
 <body>
@@ -167,8 +192,13 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
   <div class="metric"><span class="l">Stream Hash</span><span class="v small mono">a94355e1…</span></div>
 </div>
 
+<div class="mobile-tabs">
+  <span class="mt-tab on" data-pane="chart">Chart</span>
+  <span class="mt-tab" data-pane="book">Book</span>
+  <span class="mt-tab" data-pane="trade">Trade</span>
+</div>
 <main>
-  <div class="card">
+  <div class="card" data-pane="chart">
     <h3>
       <span class="ch-tabs">
         <span class="ch-tab on">BTC MARK</span>
@@ -203,7 +233,7 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
     <div class="chartmeta">rune↔BTC price reconstructed from confirmed swaps. Sparse by nature — Bitcoin blocks, not ticks.</div>
   </div>
 
-  <div class="card">
+  <div class="card" data-pane="book">
     <h3>Order Book <span class="sub">book a94355…</span></h3>
     <div class="obhead"><span>Price (sats)</span><span class="num">Size</span><span class="num">Total</span></div>
     <div class="asks">
@@ -224,7 +254,7 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
     <div class="note">BTX orders are one-sided pre-signed offers — sell-side unless buy-rune offers exist. Click a row to fill, or tick several asks for a batch tx.</div>
   </div>
 
-  <div class="card">
+  <div class="card" data-pane="trade">
     <div class="panel-modes">
       <button class="mode on">Open &middot; 0x83</button>
       <button class="mode">Addressed &middot; PSBT</button>
@@ -282,5 +312,18 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
   </span>
 </div>
 
+<script>
+  // Mobile tab switcher: only active when the @media query matches.
+  (function(){
+    const tabs = document.querySelectorAll('.mt-tab');
+    const panes = document.querySelectorAll('.card[data-pane]');
+    function select(name){
+      tabs.forEach(t => t.classList.toggle('on', t.dataset.pane === name));
+      panes.forEach(p => p.classList.toggle('on', p.dataset.pane === name));
+    }
+    tabs.forEach(t => t.addEventListener('click', () => select(t.dataset.pane)));
+    select('chart');
+  })();
+</script>
 </body>
 </html>
