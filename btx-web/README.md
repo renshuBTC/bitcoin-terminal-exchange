@@ -33,23 +33,24 @@ Open <http://localhost:3000>.
 src/
   app/
     globals.css                  — BTX design tokens (#000 / #ff8c00 / Source Code Pro)
-    layout.tsx                   — minimal shell (just <body>)
-    page.tsx                     — server component: fetches + composes the trade page
+    layout.tsx                   — Minimal shell + OG / Twitter metadata + viewport
+    page.tsx                     — Server component: parallel-fetches orders/health/state_root and composes the page
   components/
-    TopNav                       — BT[X] logo + Trade indicator + Docs + connect button host
-    WalletPicker                 — Popover with 4 detected wallets + network chip on connected button
+    TopNav                       — BT[X] logo + Trade indicator + Docs link + About popover + connect host
+    AboutPopover                 — "?" button + popover explaining BTX (aria-expanded / aria-haspopup wired)
+    WalletPicker                 — Dropdown listing 4 wallets + network chip on connected button (a11y annotated)
     WalletProvider               — React context: connect/disconnect/balance, dispatches by adapter id
-    StatsHeader                  — pair + Mark (live BRK) / Last / Indexer / Height / Wallet / Stream Hash
+    StatsHeader                  — Pair + Mark (live BRK close) / Last / Indexer / Height / Wallet / Stream Hash
     Chart                        — Sparkline backed by BRK price_close/day1 with offline fallback
-    OrderBook                    — Asks + spread + bids; "synthetic" chip until OrderView gains fields
-    TradePanel                   — Publish / Fill / OTC tabs; sign round-trip + result strips + copy
+    OrderBook                    — Asks + spread + bids; "synthetic" chip vanishes when OrderView is enriched
+    TradePanel                   — Publish / Fill / OTC tabs; BIP-322 round-trip; copy-sig; fill_draft auto-preview
     SelectedOrderProvider        — React context: which row was clicked, with nonce for repeat-clicks
     SelectedOrderDetail          — Preview card above Fill artifact input (Side/Rune/Amount/Price/Maker)
     BottomTable                  — 5 tabs: Open Orders / Pending / Trade History / Balances / My Activity
-    StatusBar                    — Polling indicator + tip height + open count + state root + age + Source
+    StatusBar                    — Polling /healthz every 30s; stale-poll detection; tip + open + state root + age
     MainGrid                     — 3-column layout wrapper for Chart + OrderBook + TradePanel
   lib/
-    api.ts                       — Typed client: all 11 BTX2 routes + BRK price_close + address balance
+    api.ts                       — Typed client: all 11 BTX2 routes + BRK price_close/address + fillDraft + body
     wallet.ts                    — BitcoinWallet adapter interface (network, signMessage, signPsbt, …)
     network.ts                   — EXPECTED_NETWORK + tone helper (mainnet → green, others → orange)
     attestations.ts              — localStorage log of BIP-322 publish/fill signatures (v1 schema, 50-row cap)
@@ -59,7 +60,7 @@ src/
       leather.ts                 — Leather adapter (window.LeatherProvider) — JSON-RPC-ish envelope
       okx.ts                     — OKX adapter (window.okxwallet.bitcoin) — direct-method API
   scripts/
-    audit.py                     — Pre-commit static audit (3 checks, no node_modules required)
+    audit.py                     — Pre-commit static audit (4 checks; tsc skipped when node_modules absent)
     install-precommit.sh         — One-shot hook installer (opt-in; writes .git/hooks/pre-commit)
 ```
 
@@ -69,7 +70,7 @@ in the StatusBar (state root prefix + click-to-verify on Source).
 ## Pre-commit audit (recommended)
 
 The repo ships a tiny pure-Python static audit at
-`scripts/audit.py`. It catches three classes of bugs that have actually
+`scripts/audit.py`. It catches four classes of bugs that have actually
 broken master in this project:
 
 1. **Tailwind tokens.** Every `bg-foo` / `text-foo` / `border-foo`
@@ -85,6 +86,12 @@ broken master in this project:
    truncation by a linter/auto-formatter (the bug that ate
    `api.ts` and `Chart.tsx` in commits `c372488` / `fd18901`
    before this check existed).
+4. **TypeScript type-check.** Runs `tsc --noEmit` when
+   `node_modules/typescript` is present. Skipped gracefully on
+   fresh shells without an install — so pre-commit still works
+   right after clone. Catches everything the structural audits
+   can't: wrong argument types, missing required props, mistaken
+   `Promise<T>` vs `T`, undefined access.
 
 Install once, then it runs automatically on every commit that
 touches `btx-web/`:
@@ -98,18 +105,30 @@ Standalone run: `npm run audit` from `btx-web/`.
 
 ## API the frontend expects
 
-All routes documented in
-`crates/brk_server/src/api/btx2.rs` of the `brk-btx` repo (commits
-`8b08c83` + `7eb3510`):
+Routes documented in `crates/brk_server/src/api/btx2.rs` of the
+`brk-btx` repo (most recent commits in the brk-btx repo's
+`COMMIT_*.md` files at the repo root).
 
 | Method | Path | Used by |
 | --- | --- | --- |
 | GET | `/api/v1/btx2/orders` | OrderBook + BottomTable |
-| GET | `/api/v1/btx2/orders/{id}` | (Fill tab, week 9-10) |
+| GET | `/api/v1/btx2/orders/{id}` | Single-order detail |
+| GET | `/api/v1/btx2/orders/{id}/body` | ActivityRow `fetch` button (commit B) |
+| GET | `/api/v1/btx2/orders/{id}/fill_draft` | TradePanel structural fill preview (commit D) |
+| GET | `/api/v1/btx2/conditional` | BottomTable Pending tab |
+| GET | `/api/v1/btx2/filled` | BottomTable Trade History tab |
 | GET | `/api/v1/btx2/stats` | StatsHeader |
-| GET | `/api/v1/btx2/state_root` | StatusBar + Stream Hash metric |
-| GET | `/api/v1/btx2/healthz` | StatusBar live dot + StatsHeader |
-| POST | `/api/v1/btx2/broadcast` | (Publish + Fill flows, weeks 9-11) |
+| GET | `/api/v1/btx2/state_root` | StatusBar Stream Hash |
+| GET | `/api/v1/btx2/healthz` | StatusBar live dot (polls every 30s) |
+| POST | `/api/v1/btx2/broadcast` | (Publish + Fill broadcast — wallet-side TX assembly) |
+
+Plus the standard BRK routes inherited by the fork:
+
+| Method | Path | Used by |
+| --- | --- | --- |
+| GET | `/api/series/price_close/day1/data?limit=N` | Chart 90-day sparkline |
+| GET | `/api/series/price_close/day1/latest` | StatsHeader live BTC mark |
+| GET | `/api/address/{addr}` | WalletProvider balance (non-UniSat adapters) |
 
 ## Trust commitments
 

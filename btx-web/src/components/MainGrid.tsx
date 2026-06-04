@@ -80,15 +80,17 @@ function MTab({
   children: React.ReactNode;
 }) {
   return (
-    <span
+    <button
+      type="button"
       onClick={onClick}
+      aria-pressed={on}
       className={
         on
-          ? 'text-orange cursor-pointer py-2.5 mr-6 font-mono font-medium text-xs uppercase tracking-wider border-b-2 border-orange -mb-px'
-          : 'text-muted cursor-pointer py-2.5 mr-6 font-mono font-medium text-xs uppercase tracking-wider border-b-2 border-transparent -mb-px hover:text-fg-bright'
+          ? 'text-orange cursor-pointer py-2.5 mr-6 font-mono font-medium text-xs uppercase tracking-wider border-b-2 border-orange -mb-px bg-transparent border-x-0 border-t-0'
+          : 'text-muted cursor-pointer py-2.5 mr-6 font-mono font-medium text-xs uppercase tracking-wider border-b-2 border-transparent -mb-px hover:text-fg-bright bg-transparent border-x-0 border-t-0'
       }
     >
       {children}
-    </span>
+    </button>
   );
 }

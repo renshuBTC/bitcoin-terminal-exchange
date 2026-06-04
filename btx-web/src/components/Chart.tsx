@@ -226,8 +226,10 @@ function ChartTab({
   children: React.ReactNode;
 }) {
   return (
-    <span
+    <button
+      type="button"
       onClick={onClick}
+      aria-pressed={on}
       className={
         on
           ? 'h-[18px] inline-flex items-center justify-center px-2.5 text-[10px] tracking-wider leading-none bg-orange text-black border border-orange rounded-sm cursor-pointer font-mono uppercase font-bold'
@@ -235,6 +237,6 @@ function ChartTab({
       }
     >
       {children}
-    </span>
+    </button>
   );
 }

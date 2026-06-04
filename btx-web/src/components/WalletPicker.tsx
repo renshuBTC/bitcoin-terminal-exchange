@@ -124,6 +124,13 @@ export function WalletPickerButton() {
       <button
         onClick={onMainClick}
         disabled={connecting}
+        aria-label={
+          connected
+            ? `${connected.providerName} connected on ${connected.network} — click to disconnect`
+            : 'Connect a Bitcoin wallet'
+        }
+        aria-expanded={open}
+        aria-haspopup={connected ? undefined : 'menu'}
         title={
           connected
             ? `${connected.providerName} · ${connected.network} · click to disconnect`

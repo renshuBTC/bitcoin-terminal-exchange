@@ -36,6 +36,9 @@ export function AboutPopover() {
       <button
         onClick={() => setOpen((o) => !o)}
         title="What is BTX?"
+        aria-label="About BTX"
+        aria-expanded={open}
+        aria-haspopup="dialog"
         className="text-fg px-2 py-1.5 text-xs rounded-sm uppercase tracking-wider hover:bg-hover hover:text-fg-bright cursor-pointer font-mono"
       >
         ?
