@@ -523,10 +523,20 @@ def verify_simple_p2tr(message: bytes | str, address: str, signature_str: str) -
         hash_type = 0x00
     else:
         flag = sig[64]
+        # Currently accepted: SIGHASH_DEFAULT (0x00) + SIGHASH_ALL (0x01).
+        #
+        # Bookmark for future: SIGHASH_NONE (0x02) and SIGHASH_SINGLE
+        # (0x03) require btx_taproot.tap_sighash to handle the variant
+        # sigMsg structure where output commitment differs. Probing
+        # (Task C, 2026-06-04) confirmed: extending JUST this allowlist
+        # is insufficient because tap_sighash currently computes the
+        # all-outputs sigMsg regardless of hash_type, so own-sign+verify
+        # for 0x02/0x03 returns False. Real-world relevance is minimal
+        # (no attestation tool defaults to NONE/SINGLE).
+        #
+        # ACP variants (0x81-0x83) are inherently degenerate for the
+        # BIP-322 simple format (one input only) and stay rejected.
         if flag not in (0x00, 0x01):
-            # Only SIGHASH_DEFAULT (0x00) or SIGHASH_ALL (0x01) accepted
-            # for the simple P2TR sighash we compute. NONE/SINGLE/ACP
-            # variants would require a different sigMsg shape.
             return False
         hash_type = flag
     sig64 = sig[:64]
@@ -1105,17 +1115,4 @@ def main() -> int:
             print(f"  - {f}")
         print(
             f"✗ btx_bip322: hash {ok}/{total}, "
-            f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}"
-        )
-        return 1
-
-    print(
-        f"✓ btx_bip322: hash {ok}/{total}, "
-        f"simple p2tr {p2tr_ok}/{p2tr_total}, full p2tr {full_ok}/{full_total}"
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    import sys
-    sys.exit(main())
+            f"simple p2tr {p2tr_ok}/{p2tr_total}, ful
