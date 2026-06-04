@@ -45,15 +45,11 @@ const BUNDLED_PYTHON: &[&str] = &[
     "btx_wallet.py",
 ];
 const BUNDLED_HTML: &[&str] = &[
+    // Trade page is the only user-facing UI (consolidation decision 2026-06-04).
     "btx_trade.html",
-    "btx_wallet.html",
-    "btx_book.html",
-    "btx_trades.html",
-    "btx_create.html",
+    // Bootstrap-only pages shown during launch / first-run (not in user nav).
     "btx_daemons.html",
     "btx_setup.html",
-    "btx_activity.html",
-    "btx_order.html",
 ];
 
 /// Shared CSS file from assets/. Lives in a parallel `assets/` subdir
