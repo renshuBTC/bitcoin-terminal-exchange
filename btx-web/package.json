@@ -2,7 +2,7 @@
   "name": "btx-web",
   "version": "0.1.0",
   "private": true,
-  "description": "BTX frontend \u2014 convenient website over the fully-on-chain BTX Bitcoin exchange. Reads from a brk_server BTX2 API; signs in user's Bitcoin wallet; broadcasts to Bitcoin.",
+  "description": "BTX frontend — convenient website over the fully-on-chain BTX Bitcoin exchange. Reads from a brk_server BTX2 API; signs in user's Bitcoin wallet; broadcasts to Bitcoin.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
