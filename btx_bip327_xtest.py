@@ -142,6 +142,27 @@ def main():
         print("FINDING (carried from previous test): btx_musig2.key_agg is x-only variant.")
         print("Closed-with-finding via the parallel key_agg_bip327 above.")
 
+
+    # ----- BIP-327 KeySort cross-validation (key_sort_vectors.json) -----
+    # Scout 23 amendment 2026-06-04: extend BTX's BIP-327 coverage from
+    # 1 of 8 vector files to 2 of 8. KeySort vectors confirm that BTX's
+    # pubkey-ordering for maker-pool aggregate keys matches the canonical
+    # BIP-327 sort (lexicographic on compressed bytes).
+    ks_path = os.path.join(BIP327_DIR, "vectors", "key_sort_vectors.json")
+    if os.path.isfile(ks_path):
+        with open(ks_path) as f:
+            ks = json.load(f)
+        actual_sort = sorted(ks["pubkeys"])
+        ks_match = actual_sort == ks["sorted_pubkeys"]
+        print()
+        print(
+            f"BIP-327 KeySort vectors: {len(ks['pubkeys'])} input pubkeys, "
+            f"Python sorted() == expected: {ks_match}"
+        )
+        if not ks_match:
+            print("  FAIL: KeySort divergence")
+            return 1
+
     return 0
 
 
