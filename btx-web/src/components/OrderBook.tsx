@@ -107,17 +107,34 @@ function Row({ row, side }: { row: BookRow; side: 'ask' | 'bid' }) {
   const priceClass = side === 'ask' ? 'text-red' : 'text-green';
 
   const onClick = () => {
+    // `side` here is the order-book side: an 'ask' is a maker selling
+    // stablecoin, so the taker is buying. A 'bid' is the reverse.
+    const takerSide = side === 'ask' ? 'buy' : 'sell';
     if (row.source === 'sample') {
       select({
         label: `sample @ ${row.price}`,
         artifactHex: `(sample row · price=${row.price} size=${row.size})`,
         source: 'orderbook',
+        detail: {
+          side: takerSide,
+          rune: 'USDh',
+          amount: row.size,
+          priceSats: row.price,
+          makerShort: 'sample',
+        },
       });
     } else if (row.sourceId) {
       select({
         label: `${row.sourceId.slice(0, 16)}…`,
         artifactHex: row.sourceId,
         source: 'orderbook',
+        detail: {
+          side: takerSide,
+          rune: 'USDh',
+          amount: row.size,
+          priceSats: row.price,
+          makerShort: `${row.sourceId.slice(0, 8)}…`,
+        },
       });
     }
   };

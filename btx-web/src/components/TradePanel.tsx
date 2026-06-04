@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { useWallet } from './WalletProvider';
 import { useSelectedOrder } from './SelectedOrderProvider';
+import { SelectedOrderDetail } from './SelectedOrderDetail';
 import { unisatWallet } from '@/lib/wallets/unisat';
 
 type Mode = 'open' | 'addressed';
@@ -236,6 +237,7 @@ export function TradePanel() {
 
       {tab === 'fill' && (
         <>
+          <SelectedOrderDetail />
           <Label>Order artifact / id (click a book row to load)</Label>
           <Input
             placeholder="BTX2 artifact hex or 36-byte order id"

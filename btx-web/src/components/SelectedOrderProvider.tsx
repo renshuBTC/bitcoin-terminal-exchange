@@ -16,6 +16,22 @@ export interface SelectedOrder {
   artifactHex: string;
   /** Source — useful for analytics + result strip wording. */
   source: 'orderbook' | 'bottom-table' | 'manual';
+  /**
+   * Optional structured detail. When present, the TradePanel renders a
+   * small preview card above the artifact textarea so the taker sees
+   * what they are about to commit to before they sign. Missing fields
+   * render as "—".
+   */
+  detail?: {
+    side?: 'buy' | 'sell';
+    rune?: string;
+    /** Amount in rune base units (display as-is). */
+    amount?: number;
+    /** Price in sats per rune unit. */
+    priceSats?: number;
+    /** Short maker label (e.g. truncated pubkey). */
+    makerShort?: string;
+  };
 }
 
 interface Ctx {

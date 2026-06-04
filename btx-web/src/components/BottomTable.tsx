@@ -69,7 +69,20 @@ export function BottomTable({ orders }: BottomTableProps) {
             orders.map((o) => (
               <tr
                 key={o.id_hex}
-                onClick={() => select({ label: `${o.id_hex.slice(0,16)}…`, artifactHex: o.id_hex, source: 'bottom-table' })}
+                onClick={() =>
+                  select({
+                    label: `${o.id_hex.slice(0, 16)}…`,
+                    artifactHex: o.id_hex,
+                    source: 'bottom-table',
+                    detail: {
+                      // Amount / price / side aren't on Btx2OrderView yet
+                      // (the view exposes only id + state + maker pubkey
+                      // + outpoint + heights — see lib/api.ts). When
+                      // those fields land they slot in here directly.
+                      makerShort: `${o.maker_pubkey_hex.slice(0, 8)}…`,
+                    },
+                  })
+                }
                 className="border-t border-border-soft hover:bg-hover cursor-pointer"
               >
                 <td className="px-4 py-2 font-mono text-fg">{o.state}</td>
