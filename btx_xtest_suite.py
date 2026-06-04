@@ -159,6 +159,11 @@ SUB_TESTS = [
         None,  # graceful SKIP if secp256k1lab not present
     ),
     (
+        "BIP-341 TapSighash vs rust-bitcoin (closes 'high-effort' bookmark)",
+        "btx_xtest_vs_rust_bitcoin_sighash.py",
+        None,  # graceful SKIP if probe binary not built
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
