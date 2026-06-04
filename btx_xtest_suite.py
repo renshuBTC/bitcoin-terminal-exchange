@@ -169,6 +169,11 @@ SUB_TESTS = [
         None,  # graceful SKIP if frost_probe binary not built
     ),
     (
+        "Schnorr adaptor vs secp256kfun (closes blocked-bookmark)",
+        "btx_xtest_vs_secp256kfun_adaptor.py",
+        None,
+    ),
+    (
         "Runes decoder vs Magic Eden (asset layer)",
         "btx_runes_xcheck.py",
         None,  # frozen golden vectors are inline in the script itself
