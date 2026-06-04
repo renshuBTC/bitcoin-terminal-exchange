@@ -17,6 +17,7 @@ import { BottomTable } from '@/components/BottomTable';
 import { StatusBar } from '@/components/StatusBar';
 import { MainGrid } from '@/components/MainGrid';
 import { WalletProvider } from '@/components/WalletProvider';
+import { SelectedOrderProvider } from '@/components/SelectedOrderProvider';
 
 async function fetchPageData(): Promise<{
   orders: Btx2OrderView[];
@@ -40,6 +41,7 @@ export default async function HomePage() {
 
   return (
     <WalletProvider>
+      <SelectedOrderProvider>
       <TopNav />
       <StatsHeader health={health} streamHash={stateRoot?.root_hex} />
       <MainGrid
@@ -53,6 +55,7 @@ export default async function HomePage() {
         </div>
       </div>
       <StatusBar health={health} stateRoot={stateRoot} />
+      </SelectedOrderProvider>
     </WalletProvider>
   );
 }

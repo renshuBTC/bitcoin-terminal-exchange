@@ -1,11 +1,14 @@
+'use client';
 /**
  * Order book card with depth bars.
- * Matches btx_trade.html's orderbook card.
  *
- * Sample asks/bids render when the indexer hasn't yet observed any
- * BTX2 envelopes — same approach as preview.html.
+ * On row click, publishes the selected order to SelectedOrderProvider
+ * so the TradePanel auto-switches to Fill and pre-fills the artifact
+ * input. Sample asks/bids render when the indexer hasn't yet observed
+ * any BTX2 envelopes — same approach as preview.html.
  */
 import type { Btx2OrderView } from '@/lib/api';
+import { useSelectedOrder } from './SelectedOrderProvider';
 
 interface OrderBookProps {
   orders: Btx2OrderView[];
@@ -17,28 +20,52 @@ interface BookRow {
   size: number;
   total: number;
   pct: number;
+  source: 'sample' | 'live';
+  sourceId?: string;
 }
 
 const SAMPLE_ASKS: BookRow[] = [
-  { price: 9560, size: 240, total: 2294400, pct: 42 },
-  { price: 9540, size: 160, total: 1526400, pct: 28 },
-  { price: 9520, size: 315, total: 2999800, pct: 55 },
-  { price: 9505, size: 100, total: 950500, pct: 18 },
-  { price: 9490, size: 198, total: 1879020, pct: 34 },
+  { price: 9560, size: 240, total: 2294400, pct: 42, source: 'sample' },
+  { price: 9540, size: 160, total: 1526400, pct: 28, source: 'sample' },
+  { price: 9520, size: 315, total: 2999800, pct: 55, source: 'sample' },
+  { price: 9505, size: 100, total: 950500, pct: 18, source: 'sample' },
+  { price: 9490, size: 198, total: 1879020, pct: 34, source: 'sample' },
 ];
 
 const SAMPLE_BIDS: BookRow[] = [
-  { price: 9480, size: 130, total: 1232400, pct: 22 },
-  { price: 9460, size: 275, total: 2601500, pct: 48 },
-  { price: 9440, size: 105, total: 991200, pct: 18 },
-  { price: 9420, size: 170, total: 1601400, pct: 30 },
-  { price: 9400, size: 68, total: 639200, pct: 12 },
+  { price: 9480, size: 130, total: 1232400, pct: 22, source: 'sample' },
+  { price: 9460, size: 275, total: 2601500, pct: 48, source: 'sample' },
+  { price: 9440, size: 105, total: 991200, pct: 18, source: 'sample' },
+  { price: 9420, size: 170, total: 1601400, pct: 30, source: 'sample' },
+  { price: 9400, size: 68, total: 639200, pct: 12, source: 'sample' },
 ];
 
 export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
   const empty = orders.length === 0;
-  const asks = empty ? SAMPLE_ASKS : [];
-  const bids = empty ? SAMPLE_BIDS : [];
+  // Real depth-ladder derivation lives in a follow-up commit (needs
+  // price/amount fields on OrderView). For now: when we have real
+  // orders, render them as sample-shape rows keyed by id; when we
+  // don't, fall back to demo asks/bids.
+  const asks: BookRow[] = empty
+    ? SAMPLE_ASKS
+    : orders.slice(0, 5).map((o, i) => ({
+        price: 9500 + i * 10,
+        size: 100,
+        total: 950000 + i * 1000,
+        pct: 30,
+        source: 'live',
+        sourceId: o.id_hex,
+      }));
+  const bids: BookRow[] = empty
+    ? SAMPLE_BIDS
+    : orders.slice(5, 10).map((o, i) => ({
+        price: 9490 - i * 10,
+        size: 100,
+        total: 949000 - i * 1000,
+        pct: 25,
+        source: 'live',
+        sourceId: o.id_hex,
+      }));
 
   return (
     <div className="bg-bg p-3.5 flex flex-col">
@@ -54,8 +81,8 @@ export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
         <span className="text-right">Total</span>
       </div>
       <div className="flex flex-col">
-        {asks.map((r) => (
-          <Row key={`a-${r.price}`} row={r} side="ask" />
+        {asks.map((r, i) => (
+          <Row key={`a-${r.price}-${i}`} row={r} side="ask" />
         ))}
       </div>
       <div className="flex justify-between items-center text-[11px] text-muted border-t border-b border-border py-1.5 px-0.5 my-1.5 font-mono">
@@ -63,22 +90,41 @@ export function OrderBook({ orders, stateRootShort = '—' }: OrderBookProps) {
         <span>10 sats · 0.10%</span>
       </div>
       <div className="flex flex-col">
-        {bids.map((r) => (
-          <Row key={`b-${r.price}`} row={r} side="bid" />
+        {bids.map((r, i) => (
+          <Row key={`b-${r.price}-${i}`} row={r} side="bid" />
         ))}
       </div>
       <div className="text-[11px] text-muted leading-relaxed mt-2.5">
-        BTX orders are one-sided pre-signed offers — sell-side unless buy-rune offers exist. Click a row to fill, or tick several asks for a batch tx.
+        BTX orders are one-sided pre-signed offers — sell-side unless buy-rune offers exist. Click a row to fill.
       </div>
     </div>
   );
 }
 
 function Row({ row, side }: { row: BookRow; side: 'ask' | 'bid' }) {
+  const { select } = useSelectedOrder();
   const barColor = side === 'ask' ? '#f0616d' : '#26a69a';
   const priceClass = side === 'ask' ? 'text-red' : 'text-green';
+
+  const onClick = () => {
+    if (row.source === 'sample') {
+      select({
+        label: `sample @ ${row.price}`,
+        artifactHex: `(sample row · price=${row.price} size=${row.size})`,
+        source: 'orderbook',
+      });
+    } else if (row.sourceId) {
+      select({
+        label: `${row.sourceId.slice(0, 16)}…`,
+        artifactHex: row.sourceId,
+        source: 'orderbook',
+      });
+    }
+  };
+
   return (
     <div
+      onClick={onClick}
       className="relative grid items-center gap-1.5 py-[3px] px-0.5 font-mono text-xs cursor-pointer hover:bg-hover"
       style={{ gridTemplateColumns: '18px 1fr 1fr 1fr' }}
     >
@@ -87,7 +133,11 @@ function Row({ row, side }: { row: BookRow; side: 'ask' | 'bid' }) {
         style={{ background: barColor, width: `${row.pct}%` }}
       />
       {side === 'ask' ? (
-        <input type="checkbox" className="m-0 accent-orange scale-[.85] relative z-10" />
+        <input
+          type="checkbox"
+          onClick={(e) => e.stopPropagation()}
+          className="m-0 accent-orange scale-[.85] relative z-10"
+        />
       ) : (
         <span />
       )}

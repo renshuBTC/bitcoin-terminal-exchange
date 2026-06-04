@@ -5,6 +5,7 @@
  */
 import { useState } from 'react';
 import type { Btx2OrderView } from '@/lib/api';
+import { useSelectedOrder } from './SelectedOrderProvider';
 
 type BTab = 'orders' | 'pending' | 'trades' | 'balances';
 
@@ -14,6 +15,7 @@ interface BottomTableProps {
 
 export function BottomTable({ orders }: BottomTableProps) {
   const [tab, setTab] = useState<BTab>('orders');
+  const { select } = useSelectedOrder();
 
   return (
     <div className="border-t border-border bg-bg min-h-[220px]">
@@ -67,6 +69,7 @@ export function BottomTable({ orders }: BottomTableProps) {
             orders.map((o) => (
               <tr
                 key={o.id_hex}
+                onClick={() => select({ label: `${o.id_hex.slice(0,16)}…`, artifactHex: o.id_hex, source: 'bottom-table' })}
                 className="border-t border-border-soft hover:bg-hover cursor-pointer"
               >
                 <td className="px-4 py-2 font-mono text-fg">{o.state}</td>

@@ -10,8 +10,9 @@
  * attestation step. The full PSBT-construct-and-broadcast flow is a
  * later commit; today's deliverable is the wallet signing roundtrip.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWallet } from './WalletProvider';
+import { useSelectedOrder } from './SelectedOrderProvider';
 import { unisatWallet } from '@/lib/wallets/unisat';
 
 type Mode = 'open' | 'addressed';
@@ -45,6 +46,55 @@ export function TradePanel() {
   });
   const [result, setResult] = useState<ResultState | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [fillArtifact, setFillArtifact] = useState('');
+  const [filling, setFilling] = useState(false);
+  const [fillResult, setFillResult] = useState<ResultState | null>(null);
+
+  // Subscribe to OrderBook / BottomTable row clicks.
+  const { selected, nonce } = useSelectedOrder();
+  useEffect(() => {
+    if (selected) {
+      setTab('fill');
+      setFillArtifact(selected.artifactHex);
+      setFillResult(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
+
+  const fill = async () => {
+    setFillResult(null);
+    if (!connected) {
+      try { await connect(); } catch (e) {
+        setFillResult({ ok: false, text: e instanceof Error ? e.message : 'connect failed' });
+        return;
+      }
+    }
+    if (!fillArtifact.trim()) {
+      setFillResult({ ok: false, text: 'paste an order artifact / id first' });
+      return;
+    }
+    setFilling(true);
+    try {
+      const snapshot = {
+        kind: 'btx2.order.fill',
+        version: 1,
+        order: fillArtifact.trim(),
+        taker: connected?.address ?? '(unknown)',
+        network: connected?.network ?? 'mainnet',
+        ts: new Date().toISOString(),
+      };
+      const message = JSON.stringify(snapshot, null, 2);
+      const signature = await unisatWallet.signMessage(message, 'bip322');
+      setFillResult({
+        ok: true,
+        text: `BIP-322 fill-commitment OK\nsignature: ${signature.slice(0, 24)}…${signature.slice(-12)}`,
+      });
+    } catch (e) {
+      setFillResult({ ok: false, text: e instanceof Error ? e.message : 'sign failed' });
+    } finally {
+      setFilling(false);
+    }
+  };
 
   const publish = async () => {
     setResult(null);
@@ -186,14 +236,27 @@ export function TradePanel() {
 
       {tab === 'fill' && (
         <>
-          <Label>Order artifact (click a book row to load)</Label>
-          <Input placeholder="BTX2 artifact hex" />
-          <button className="w-full mt-3 py-2.5 bg-orange text-black border border-orange rounded-sm font-mono text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-orange-bright hover:border-orange-bright">
-            Fill — build &amp; broadcast swap
+          <Label>Order artifact / id (click a book row to load)</Label>
+          <Input
+            placeholder="BTX2 artifact hex or 36-byte order id"
+            value={fillArtifact}
+            onChange={(e) => setFillArtifact(e.target.value)}
+          />
+          <button
+            onClick={fill}
+            disabled={filling}
+            className="w-full mt-3 py-2.5 bg-orange text-black border border-orange rounded-sm font-mono text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-orange-bright hover:border-orange-bright disabled:opacity-60 disabled:cursor-default"
+          >
+            {filling ? 'signing in wallet…' : connected ? 'Fill — sign commitment' : 'Connect wallet to fill'}
           </button>
           <div className="text-[11px] text-muted leading-relaxed mt-2.5">
             taker funds + signs; the maker&rsquo;s pre-sig is dropped in; rune routes to your output.
           </div>
+          {fillResult && (
+            <div className={`text-[11px] mt-2.5 whitespace-pre-wrap break-all p-2 px-2.5 rounded-sm border font-mono ${fillResult.ok ? 'text-green border-[#2c5e57] bg-[#0c1816]' : 'text-red border-[#5e2e34] bg-[#1a0e0e]'}`}>
+              {fillResult.text}
+            </div>
+          )}
         </>
       )}
 

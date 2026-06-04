@@ -427,6 +427,81 @@ td.empty,.empty{color:var(--dim); text-align:center; padding:24px; font-family:v
     });
   })();
 </script>
+<script>
+  // Orderbook row click + Fill button BIP-322 round-trip (preview)
+  (function(){
+    const rows = document.querySelectorAll('main .card:nth-of-type(2) .obrow');
+    const fillInput = document.querySelector('main .card:nth-of-type(3) #p-fill input, main .card:nth-of-type(3) .panel #f_art');
+    const tabs = document.querySelectorAll('main .card:nth-of-type(3) .tab');
+    const panes = {
+      publish: document.querySelector('main .card:nth-of-type(3) #p-publish'),
+      fill: document.querySelector('main .card:nth-of-type(3) #p-fill'),
+      otc: document.querySelector('main .card:nth-of-type(3) #p-otc'),
+    };
+    function showPane(name){
+      Object.keys(panes).forEach(k => { if (panes[k]) panes[k].style.display = (k === name) ? 'block' : 'none'; });
+      tabs.forEach(t => t.classList.toggle('on', t.dataset.p === name || t.textContent.trim().toLowerCase() === name));
+    }
+    rows.forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target && e.target.tagName === 'INPUT') return; // checkbox; ignore
+        // Find the price column (3rd cell, index 2) and the size (3rd, idx 3) for the artifact label
+        const cells = row.querySelectorAll('span');
+        const priceText = cells[1] ? cells[1].textContent.trim() : '';
+        const sizeText = cells[2] ? cells[2].textContent.trim() : '';
+        const label = '(sample row · price=' + priceText + ' size=' + sizeText + ')';
+        showPane('fill');
+        const fi = document.querySelector('main .card:nth-of-type(3) #p-fill input, #f_art');
+        if (fi) fi.value = label;
+      });
+    });
+
+    // Fill button: BIP-322 fill-commitment
+    function fillBtn(){
+      const btns = document.querySelectorAll('main .card:nth-of-type(3) button.act');
+      // Heuristic: the 2nd .act button is the Fill button (Publish is 1st, OTC has its own)
+      return btns[1] || null;
+    }
+    const fb = fillBtn();
+    if (!fb) return;
+    const stripStyle = 'font-size:11px; margin-top:10px; white-space:pre-wrap; word-break:break-all; padding:7px 9px; border-radius:2px; border:1px solid; font-family:var(--font-mono); display:none';
+    let strip = document.createElement('div');
+    strip.className = 'fill-result';
+    strip.style.cssText = stripStyle;
+    fb.parentElement.insertBefore(strip, fb.nextSibling);
+    function show(ok, text){
+      strip.style.display = 'block';
+      strip.style.color = ok ? 'var(--green)' : 'var(--red)';
+      strip.style.borderColor = ok ? '#2c5e57' : '#5e2e34';
+      strip.style.background = ok ? '#0c1816' : '#1a0e0e';
+      strip.textContent = text;
+    }
+    fb.addEventListener('click', async () => {
+      const u = window.unisat;
+      if (!u){ show(false, 'UniSat extension not installed.'); return; }
+      const fi = document.querySelector('main .card:nth-of-type(3) #p-fill input, #f_art');
+      const artifact = (fi && fi.value || '').trim();
+      if (!artifact){ show(false, 'click an order row in the book to pre-fill, or paste an artifact'); return; }
+      try {
+        fb.disabled = true;
+        const orig = fb.textContent;
+        fb.textContent = 'signing in wallet…';
+        const accounts = await u.requestAccounts();
+        const taker = accounts && accounts[0] || '(unknown)';
+        const snapshot = { kind: 'btx2.order.fill', version: 1, order: artifact, taker, ts: new Date().toISOString() };
+        const sig = await u.signMessage(JSON.stringify(snapshot, null, 2), 'bip322-simple');
+        show(true, 'BIP-322 fill-commitment OK\nsignature: ' + sig.slice(0,24) + '…' + sig.slice(-12));
+        fb.textContent = orig || 'Fill — build & broadcast swap';
+      } catch (e) {
+        show(false, e && e.message ? e.message : 'sign failed');
+        fb.textContent = 'Fill — build & broadcast swap';
+      } finally {
+        fb.disabled = false;
+      }
+    });
+  })();
+</script>
+
 
 
 </body>
