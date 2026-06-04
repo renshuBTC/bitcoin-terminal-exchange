@@ -213,6 +213,21 @@ SUB_TESTS = [
         "btx_runestone_cenotaph_adversarial.py",
         None,
     ),
+    (
+        "MuSig2 Rust→Python signing direction (closes Py↔Rust symmetry)",
+        "btx_xtest_musig2_rust_signed.py",
+        None,  # SKIPs gracefully if the Rust-side golden hasn't been regenerated
+    ),
+    (
+        "Multi-org maker pool ceremony demo (N=3 mutually-distrusting members)",
+        "btx_pool_ceremony_demo.py",
+        None,
+    ),
+    (
+        "Pool fail-stop demo (empirical evidence for §11.x NO-slashing decision)",
+        "btx_pool_ceremony_failstop_demo.py",
+        None,
+    ),
 ]
 
 
