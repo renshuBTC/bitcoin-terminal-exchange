@@ -6,18 +6,24 @@ exchange` plus 2 cross-repo ports to `brk-btx` (the Rust indexer side).
 
 ## Quick stats
 
-- **34 commits pushed total** across two repos:
-  - **30 commits** to `bitcoin-terminal-exchange/main`
-  - **4 commits** to `brk-btx/main` (BIP-322 SIGHASH_ALL port, wiring-sanity
-    test, BIP-327 multi-round verification port, Py↔Rust random cross-test)
+- **43 commits pushed total** across two repos:
+  - **37 commits** to `bitcoin-terminal-exchange/main`
+  - **6 commits** to `brk-btx/main` (BIP-322 SIGHASH_ALL port, wiring-
+    sanity test, BIP-327 multi-round verification port, Py↔Rust random
+    cross-test, Rust signing-side port, env-gated Rust-signed dumper)
 - **12 external scouts** (cross-validation oracles)
-- **5 BTX-side engineering tasks** in bitcoin-terminal-exchange (incl.
-  Python generator for the brk-btx cross-test)
-- **4 cross-repo brk-btx ports** completing end-to-end interop for both
-  BIP-322 SIGHASH_ALL AND BIP-327 multi-round verification
-- **Python suite: 12 → 28 sub-tests**
-- **brk-btx Rust tests: +6 (2 BIP-322 raw + 1 BIP-322 wiring + 3 BIP-327
-  canonical-vector tests + 1 Py↔Rust random cross-test)**
+- **5 BTX-side engineering tasks** in bitcoin-terminal-exchange
+- **2 BTX-side protocol-design artifacts** (consumer survey + decisions
+  memo) plus a BTX-v2-spec §11.x amendment recording the 3 decisions
+- **2 ceremony demos** (happy-path 3/5-of-N multi-org pool + 4-scenario
+  fail-stop adversarial demo)
+- **6 cross-repo brk-btx ports** completing end-to-end interop for
+  BIP-322 SIGHASH_ALL and full BIP-327 multi-round (both verify AND sign)
+- **Python suite: 12 → 31 sub-tests** (28 + Rust-signed verifier +
+  ceremony + failstop)
+- **brk-btx Rust tests: +8** (2 BIP-322 raw + 1 BIP-322 wiring + 3 BIP-327
+  canonical-vector tests + 1 Py↔Rust random + 1 end-to-end Rust-only
+  ceremony + 1 env-gated Rust-signed dumper)
 - **Bookmark-accuracy this session: 1 of 7 = 14%** — the dominant
   operational lesson, reinforced across multiple deferrals
 
@@ -82,6 +88,21 @@ SIGHASH_DEFAULT.
 | ------ | ----- |
 | `1ace536` | Audit pass: mark BTX-musig2-bip327-refactor-scope SUPERSEDED |
 | `4ad6116` | btx_xtest_bip327_random_to_rust: Python generator for brk-btx Rust cross-test |
+| `0f60ddd` | Session index: add 4 post-cycle commits |
+| `278b7bd` | Consumer survey memo — who actually consumes the Rust port? |
+| `0a88d9c` | Three protocol-design decisions recorded; spec §11.x amendment |
+| `2f7bd44` | btx_pool_ceremony_demo — multi-org pool ceremony reference flow (Phase B) |
+| `4bc8a80` | btx_pool_ceremony_failstop_demo — empirical evidence for NO-slashing |
+| `284c546` | Suite +3 sub-tests; Rust→Python signing-direction verifier |
+
+### Cross-repo commits to brk-btx (extended)
+
+| Commit | Title |
+| ------ | ----- |
+| `60ebb51` | btx_musig2_protocol — BIP-327 multi-round verification port (Rust, ~805 LOC) |
+| `672a5c3` | Python↔Rust random-input MuSig2 cross-test (5 sessions, byte-identical) |
+| `b6c7e60` | Phase A — port BIP-327 signing side to Rust (~280 LOC; nonce_gen_internal + sign) |
+| `9287975` | env-gated Rust-signed-session dumper for Rust→Python cross-test |
 
 ## Final suite state — 28 sub-tests
 
